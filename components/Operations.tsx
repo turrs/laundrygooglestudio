@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Order, Customer, OrderStatus, Service, Location, User } from '../types';
+import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
 import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight } from 'lucide-react';
@@ -348,34 +348,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
         itemsDetails += `• ${item.serviceName} (${item.quantity} ${unit}) x ${item.price.toLocaleString('id-ID')} = Rp ${(item.price * item.quantity).toLocaleString('id-ID')}%0A`;
     });
 
-//     const msg = 
-// `*${laundryName}*%0A` +
-// `${laundryAddr}%0A` +
-// `Telp: ${laundryPhone}%0A` +
-// `--------------------------------%0A` +
-// `*NOTA PESANAN*%0A` +
-// `No Order: #${order.id.slice(0, 8)}%0A` +
-// `Tanggal: ${new Date(order.createdAt).toLocaleString('id-ID')}%0A` +
-// `Pelanggan: ${customer.name}%0A` +
-// `Parfum: ${order.perfume || 'Standard'}%0A` +
-// `--------------------------------%0A` +
-// `${itemsDetails}` +
-// `--------------------------------%0A` +
-// `*TOTAL: Rp ${order.totalAmount.toLocaleString('id-ID')}*%0A` +
-// `--------------------------------%0A` +
-// `Pantau status pesanan anda disini:%0A` +
-// `${trackingLink}%0A%0A` +
-// `Terima kasih telah menggunakan jasa kami!`;
-
     // Send
     let formatted = customer.phone.replace(/\D/g, '');
     if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
     if (!formatted.startsWith('62')) formatted = '62' + formatted; 
-    
-    // const url = `https://wa.me/${formatted}?text=${msg}`; // Already encoded in template partially, but safer to construct raw and encode
-    // Note: The template above uses %0A which is URL encoded newline. 
-    // If we use encodeURIComponent on the whole string, we should write real newlines \n.
-    // Let's rewrite using standard strings and encodeURIComponent.
     
     const cleanMsg = 
 `*${laundryName}*
@@ -802,9 +778,11 @@ Terima kasih telah menggunakan jasa kami!`;
                           <Printer size={16}/> <span className="hidden sm:inline">Struk</span>
                        </button>
 
-                       <button onClick={() => window.open(`/?trackingId=${order.id}`, '_blank')} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm transition border border-blue-200">
-                          Tracking
-                       </button>
+                       {currentUser?.role === UserRole.OWNER && (
+                        <button onClick={() => window.open(`/?trackingId=${order.id}`, '_blank')} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm transition border border-blue-200">
+                            Tracking
+                        </button>
+                       )}
                     </div>
                  </div>
               </div>
