@@ -18,7 +18,7 @@ export const AnalyticsDashboard: React.FC = () => {
     const date = new Date();
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0]; // End of current month
   });
-
+  console.log(rawExpenses);
   // Processed Data
   const [filteredExpensesAmount, setFilteredExpensesAmount] = useState(0);
   const [revenueData, setRevenueData] = useState<any[]>([]);
