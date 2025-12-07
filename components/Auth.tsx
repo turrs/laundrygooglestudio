@@ -27,7 +27,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const cleanPassword = password.trim();
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      // Cast to any to bypass type definition mismatch (v2 methods on v1 types)
+      const { data, error: authError } = await (supabase.auth as any).signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
       });
@@ -50,7 +51,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         if (profile.role !== role) {
           setError(`Account found, but role does not match. Please switch tabs.`);
-          await supabase.auth.signOut();
+          await (supabase.auth as any).signOut();
         } else {
            onLogin({
              id: profile.id,
@@ -81,7 +82,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     try {
       // 1. Sign Up
-      const { data, error: authError } = await supabase.auth.signUp({
+      const { data, error: authError } = await (supabase.auth as any).signUp({
         email: cleanEmail,
         password: cleanPassword,
       });

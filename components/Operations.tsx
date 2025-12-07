@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
+import { Order, Customer, OrderStatus, Service, Location, User } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
 import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight } from 'lucide-react';
@@ -403,7 +403,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
        if (targetOrder) {
            const customer = customers.find(c => c.id === targetOrder.customerId);
            if (customer) {
-               const trackingLink = `${window.location.origin}?trackingId=${targetOrder.id}`;
                const msg = `Halo ${customer.name}, Laundry #${targetOrder.id.slice(0, 8)} sudah SELESAI dan siap diambil! \n\nTotal: Rp ${targetOrder.totalAmount.toLocaleString('id-ID')}\n\nTerima kasih telah mempercayakan laundry Anda kepada kami.`;
                sendWhatsApp(customer.phone, msg);
            }
@@ -715,6 +714,15 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
                              <CheckSquare size={16}/> Ambil
                           </button>
                        )}
+                       
+                       <button 
+                          onClick={() => handlePrintReceipt(order)} 
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm transition border border-slate-300 flex items-center gap-1"
+                          title="Cetak Struk"
+                       >
+                          <Printer size={16}/> <span className="hidden sm:inline">Struk</span>
+                       </button>
+
                        <button onClick={() => window.open(`/?trackingId=${order.id}`, '_blank')} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm transition border border-blue-200">
                           Tracking
                        </button>

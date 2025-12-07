@@ -69,6 +69,16 @@ export interface Order {
   review?: string;
 }
 
+export interface Expense {
+  id: string;
+  description: string;
+  amount: number;
+  category: string; // 'Operational', 'Supplies', 'Maintenance', 'Other'
+  date: string;
+  recordedBy: string; // User Name
+  locationId?: string;
+}
+
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;

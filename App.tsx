@@ -4,6 +4,7 @@ import { Auth } from './components/Auth';
 import { AnalyticsDashboard } from './components/Dashboard';
 import { LocationManagement, StaffManagement, ServiceConfiguration } from './components/Admin';
 import { OrderManagement, CustomerManagement } from './components/Operations';
+import { ExpenseManagement } from './components/Expenses';
 import { TrackingPage } from './components/Tracking';
 import { SupabaseService } from './migration/SupabaseService';
 import { 
@@ -17,7 +18,8 @@ import {
   Menu,
   X,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Wallet
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './migration/supabaseClient';
 import { SupabaseSchema } from './migration/SupabaseSchema';
@@ -26,7 +28,13 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('DASHBOARD');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [trackingId, setTrackingId] = useState<string | null>(null);
+  
+  // FIX: Initialize trackingId immediately from URL to prevent Auth screen flash
+  const [trackingId, setTrackingId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('trackingId');
+  });
+  
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -37,59 +45,47 @@ const App: React.FC = () => {
 
     const initSession = async () => {
       try {
-        // 1. Check for tracking URL param
-        const params = new URLSearchParams(window.location.search);
-        const tid = params.get('trackingId');
-        if (tid) {
-          setTrackingId(tid);
-          // CRITICAL FIX: Do NOT return here. 
-          // We must proceed to getSession() so Supabase loads the token from localStorage.
-          // Otherwise, the new tab starts with a "cold" client and might fail data fetching.
-        }
-
-        // 2. Check Local Storage Session
-        // This ensures the client is authenticated if a token exists.
-        const { data: { session } } = await supabase.auth.getSession();
+        // If we are in tracking mode, we can skip session checks primarily, 
+        // but we still run it in case an Owner is clicking a tracking link.
+        
+        // 1. Check Local Storage Session
+        const { data: { session } } = await (supabase.auth as any).getSession();
 
         if (!session) {
            setUser(null);
-           return;
+           return; 
         }
 
-        // 3. If session exists, verify with server and get Profile
+        // 2. If session exists, verify with server and get Profile
         const profile = await SupabaseService.getCurrentProfile();
         if (profile) {
           setUser(profile);
           // Only change tab if we are NOT in tracking mode
-          if (!tid) {
+          if (!trackingId) {
              setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
           }
         } else {
-          // Session exists but no profile? Might be a mismatch, clear it.
           setUser(null);
         }
       } catch (error) {
         console.error("Session initialization failed:", error);
         setUser(null);
       } finally {
-        // 4. CRITICAL: Always turn off loading, even if errors occur
         setIsLoading(false);
       }
     };
 
     initSession();
 
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: authListener } = (supabase.auth as any).onAuthStateChange(async (event: string, session: any) => {
       if (event === 'SIGNED_IN' && session) {
-        // Only fetch profile if we don't have it (avoid redundant fetches)
         if (!user) {
             const profile = await SupabaseService.getCurrentProfile();
             if (profile) setUser(profile);
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setActiveTab('DASHBOARD'); // Reset tab
+        if (!trackingId) setActiveTab('DASHBOARD');
       }
     });
 
@@ -123,6 +119,7 @@ const App: React.FC = () => {
     );
   }
 
+  // Priority Render: Tracking Page overrides Auth check
   if (trackingId) {
     return <TrackingPage orderId={trackingId} />;
   }
@@ -141,9 +138,9 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    setIsLoading(true); // Show loader during logout
+    setIsLoading(true); 
     try {
-        await supabase.auth.signOut();
+        await (supabase.auth as any).signOut();
         setUser(null);
     } finally {
         setIsLoading(false);
@@ -158,7 +155,7 @@ const App: React.FC = () => {
     <button
       onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-        activeTab === id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-600'
+        activeTab === id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:text-blue-600'
       }`}
     >
       <Icon size={20} />
@@ -192,6 +189,7 @@ const App: React.FC = () => {
 
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-4 mt-6 mb-2">Operations</div>
             <NavItem id="ORDERS" label="Orders" icon={ShoppingBag} />
+            <NavItem id="EXPENSES" label="Pengeluaran" icon={Wallet} />
             <NavItem id="CUSTOMERS" label="Customers" icon={UserIcon} />
          </nav>
 
@@ -224,6 +222,7 @@ const App: React.FC = () => {
                 </>
               )}
               <NavItem id="ORDERS" label="Orders" icon={ShoppingBag} />
+              <NavItem id="EXPENSES" label="Pengeluaran" icon={Wallet} />
               <NavItem id="CUSTOMERS" label="Customers" icon={UserIcon} />
               <button onClick={handleLogout} className="flex items-center gap-3 text-red-600 px-4 py-3 w-full border-t mt-4">
                  <LogOut size={20} /> Logout
@@ -233,10 +232,11 @@ const App: React.FC = () => {
 
         <main className="flex-1 overflow-auto p-4 md:p-8">
            {activeTab === 'DASHBOARD' && user.role === UserRole.OWNER && <AnalyticsDashboard />}
-           {activeTab === 'LOCATIONS' && user.role === UserRole.OWNER && <LocationManagement />}
+           {activeTab === 'LOCATIONS' && user.role === UserRole.OWNER && <LocationManagement currentUser={user} />}
            {activeTab === 'STAFF' && user.role === UserRole.OWNER && <StaffManagement />}
            {activeTab === 'SERVICES' && user.role === UserRole.OWNER && <ServiceConfiguration />}
            {activeTab === 'ORDERS' && <OrderManagement currentUser={user} />}
+           {activeTab === 'EXPENSES' && <ExpenseManagement currentUser={user} />}
            {activeTab === 'CUSTOMERS' && <CustomerManagement />}
         </main>
       </div>

@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { User, Location, Service, Customer, Order, OrderStatus, UserRole } from '../types';
+import { User, Location, Service, Customer, Order, OrderStatus, UserRole, Expense } from '../types';
 
 /**
  * SupabaseService
@@ -11,7 +11,7 @@ export const SupabaseService = {
   // --- AUTH / PROFILES ---
   
   async getCurrentProfile(): Promise<User | null> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await (supabase.auth as any).getUser();
     if (!user) return null;
 
     // Try fetching by auth_id (new schema) OR id (legacy schema compatibility)
@@ -293,5 +293,56 @@ export const SupabaseService = {
     if (completedBy) payload.completed_by = completedBy;
     
     await supabase.from('orders').update(payload).eq('id', orderId);
+  },
+
+  // --- EXPENSES ---
+
+  async getExpenses(): Promise<Expense[]> {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    if (!data) return [];
+
+    return data.map((e: any) => ({
+      id: e.id,
+      description: e.description,
+      amount: e.amount,
+      category: e.category,
+      date: e.date,
+      recordedBy: e.recorded_by,
+      locationId: e.location_id
+    }));
+  },
+
+  async saveExpense(exp: Expense): Promise<void> {
+     try {
+       const isNew = exp.id.startsWith('exp-');
+       const payload = {
+         description: exp.description,
+         amount: exp.amount,
+         category: exp.category,
+         date: exp.date,
+         recorded_by: exp.recordedBy,
+         location_id: exp.locationId
+       };
+
+       if (isNew) {
+         const { error } = await supabase.from('expenses').insert([payload]);
+         if(error) throw error;
+       } else {
+         const { error } = await supabase.from('expenses').update(payload).eq('id', exp.id);
+         if(error) throw error;
+       }
+     } catch (err) {
+       console.error("Failed to save expense:", err);
+       throw err;
+     }
+  },
+
+  async deleteExpense(id: string): Promise<void> {
+    await supabase.from('expenses').delete().eq('id', id);
   }
 };

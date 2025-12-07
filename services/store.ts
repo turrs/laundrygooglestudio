@@ -1,4 +1,4 @@
-import { User, Location, Service, Customer, Order, OrderStatus, UserRole } from '../types';
+import { User, Location, Service, Customer, Order, OrderStatus } from '../types';
 
 // Initial Seed Data
 const SEED_LOCATIONS: Location[] = [

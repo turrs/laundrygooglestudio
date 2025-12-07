@@ -3,6 +3,7 @@ import React from 'react';
 export const SQL_SCHEMA = `
 -- DANGER: DROP EXISTING TABLES TO RESET SCHEMA
 -- This ensures a clean slate for the application logic.
+DROP TABLE IF EXISTS public.expenses CASCADE;
 DROP TABLE IF EXISTS public.order_items CASCADE;
 DROP TABLE IF EXISTS public.orders CASCADE;
 DROP TABLE IF EXISTS public.profiles CASCADE;
@@ -84,6 +85,18 @@ create table public.order_items (
   quantity numeric not null
 );
 
+-- Expenses
+create table public.expenses (
+  id uuid default gen_random_uuid() primary key,
+  description text not null,
+  amount numeric not null,
+  category text not null,
+  recorded_by text,
+  location_id uuid references public.locations(id),
+  date timestamp with time zone default timezone('utc'::text, now()) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 -- 3. Enable Row Level Security (RLS)
 alter table public.locations enable row level security;
 alter table public.services enable row level security;
@@ -91,6 +104,7 @@ alter table public.customers enable row level security;
 alter table public.profiles enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
+alter table public.expenses enable row level security;
 
 -- 4. Create Policies (Permissive for this app version)
 
@@ -115,6 +129,9 @@ create policy "Enable update for tracking" on public.orders for update to anon u
 -- Order Items
 create policy "Enable all for authenticated" on public.order_items for all to authenticated using (true) with check (true);
 create policy "Enable read for tracking" on public.order_items for select to anon using (true);
+
+-- Expenses
+create policy "Enable all for authenticated" on public.expenses for all to authenticated using (true) with check (true);
 `;
 
 export const SupabaseSchema = () => {

@@ -2,14 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { Location, User, Service, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { MapPin, Tag, Trash2, Plus, Edit2, Loader2 } from 'lucide-react';
+import { MapPin, Tag, Trash2, Plus, Edit2, Loader2, ShieldAlert } from 'lucide-react';
 
 // --- LOCATIONS ---
-export const LocationManagement: React.FC = () => {
+interface LocationManagementProps {
+  currentUser?: User | null;
+}
+
+export const LocationManagement: React.FC<LocationManagementProps> = ({ currentUser }) => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Location>>({});
   const [loading, setLoading] = useState(true);
+
+  // Security Check: If not owner, prevent access entirely
+  if (currentUser?.role !== UserRole.OWNER) {
+      return (
+          <div className="flex flex-col items-center justify-center h-64 text-slate-500 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
+              <ShieldAlert size={48} className="text-red-400 mb-2" />
+              <h3 className="text-lg font-bold text-slate-700">Akses Ditolak</h3>
+              <p>Hanya Owner yang dapat mengelola lokasi.</p>
+          </div>
+      );
+  }
 
   useEffect(() => {
     fetchLocations();
@@ -38,55 +53,58 @@ export const LocationManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if(window.confirm("Are you sure?")) {
+    if(window.confirm("Apakah Anda yakin ingin menghapus lokasi ini?")) {
         await SupabaseService.deleteLocation(id);
         fetchLocations();
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800">Locations</h2>
-        <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-          <Plus size={18} /> Add Location
-        </button>
+        <h2 className="text-2xl font-bold text-slate-800">Manajemen Lokasi</h2>
+        {/* Extra check for UI consistency, though the component is already guarded */}
+        {currentUser.role === UserRole.OWNER && (
+          <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+            <Plus size={18} /> Tambah Lokasi
+          </button>
+        )}
       </div>
 
       {isEditing && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="text-lg font-semibold mb-4">{formData.id ? 'Edit' : 'New'} Location</h3>
+          <h3 className="text-lg font-semibold mb-4">{formData.id ? 'Edit' : 'Tambah'} Lokasi</h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input 
-              placeholder="Store Name" 
-              className="border p-2 rounded" 
+              placeholder="Nama Outlet" 
+              className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
               value={formData.name || ''} 
               onChange={e => setFormData({...formData, name: e.target.value})} 
               required 
             />
             <input 
-              placeholder="Address" 
-              className="border p-2 rounded" 
+              placeholder="Alamat Lengkap" 
+              className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
               value={formData.address || ''} 
               onChange={e => setFormData({...formData, address: e.target.value})} 
               required 
             />
             <input 
-              placeholder="Phone" 
-              className="border p-2 rounded" 
+              placeholder="Nomor Telepon" 
+              className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
               value={formData.phone || ''} 
               onChange={e => setFormData({...formData, phone: e.target.value})} 
               required 
             />
             <div className="flex gap-2">
-              <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save</button>
-              <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Cancel</button>
+              <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Simpan</button>
+              <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Batal</button>
             </div>
           </form>
         </div>
       )}
 
-      {loading ? <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Loading locations...</div> : (
+      {loading ? <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Memuat lokasi...</div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {locations.map(loc => (
             <div key={loc.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition">
@@ -94,10 +112,12 @@ export const LocationManagement: React.FC = () => {
                 <div className="bg-blue-100 p-3 rounded-full text-blue-600">
                     <MapPin size={24} />
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={() => { setFormData(loc); setIsEditing(true); }} className="text-slate-400 hover:text-blue-600"><Edit2 size={18} /></button>
-                    <button onClick={() => handleDelete(loc.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>
-                </div>
+                {currentUser.role === UserRole.OWNER && (
+                  <div className="flex gap-2">
+                      <button onClick={() => { setFormData(loc); setIsEditing(true); }} className="text-slate-400 hover:text-blue-600"><Edit2 size={18} /></button>
+                      <button onClick={() => handleDelete(loc.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>
+                  </div>
+                )}
                 </div>
                 <h3 className="font-bold text-lg text-slate-800">{loc.name}</h3>
                 <p className="text-slate-500 text-sm mt-1">{loc.address}</p>
@@ -173,41 +193,41 @@ export const StaffManagement: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800">Staff Management</h2>
+        <h2 className="text-2xl font-bold text-slate-800">Manajemen Staff</h2>
         <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-          <Plus size={18} /> Add Staff
+          <Plus size={18} /> Tambah Staff
         </button>
       </div>
 
       {isEditing && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input placeholder="Name" className="border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
+            <input placeholder="Nama Lengkap" className="border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
             <input placeholder="Email" type="email" className="border p-2 rounded" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} required />
             <select className="border p-2 rounded" value={formData.locationId || ''} onChange={e => setFormData({...formData, locationId: e.target.value})} required>
-                <option value="">Select Location</option>
+                <option value="">Pilih Lokasi Penugasan</option>
                 {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
             <div className="col-span-1 md:col-span-2 flex gap-2">
-              <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save Staff</button>
-              <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Cancel</button>
+              <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Simpan Staff</button>
+              <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Batal</button>
             </div>
-            <p className="col-span-2 text-xs text-orange-500">Note: This creates a staff profile record. To allow them to login, an Auth User must be created in the Supabase Dashboard matching this email.</p>
+            <p className="col-span-2 text-xs text-orange-500">Catatan: Ini membuat data profil staff. Untuk login, Auth User harus dibuat di Supabase Dashboard dengan email yang sama.</p>
           </form>
         </div>
       )}
 
       {loading ? (
-         <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Loading staff...</div>
+         <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Memuat staff...</div>
       ) : (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-500 font-medium">
             <tr>
-              <th className="p-4">Name</th>
+              <th className="p-4">Nama</th>
               <th className="p-4">Email</th>
-              <th className="p-4">Assigned Location</th>
-              <th className="p-4 text-right">Actions</th>
+              <th className="p-4">Lokasi</th>
+              <th className="p-4 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -219,7 +239,7 @@ export const StaffManagement: React.FC = () => {
                 </td>
                 <td className="p-4 text-slate-600">{s.email}</td>
                 <td className="p-4 text-slate-600">
-                    {locations.find(l => l.id === s.locationId)?.name || <span className="text-red-400 italic">Unassigned</span>}
+                    {locations.find(l => l.id === s.locationId)?.name || <span className="text-red-400 italic">Belum Ditugaskan</span>}
                 </td>
                 <td className="p-4 text-right">
                   <button onClick={() => { setFormData(s); setIsEditing(true); }} className="text-blue-600 hover:underline text-sm">Edit</button>
@@ -269,7 +289,7 @@ export const ServiceConfiguration: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-      if(window.confirm("Are you sure?")) {
+      if(window.confirm("Yakin ingin menghapus layanan ini?")) {
           await SupabaseService.deleteService(id);
           fetchServices();
       }
@@ -278,28 +298,28 @@ export const ServiceConfiguration: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800">Services & Pricing</h2>
+        <h2 className="text-2xl font-bold text-slate-800">Layanan & Harga</h2>
         <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-          <Plus size={18} /> Add Service
+          <Plus size={18} /> Tambah Layanan
         </button>
       </div>
 
       {isEditing && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <input placeholder="Service Name" className="border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-            <input placeholder="Price" type="number" step="100" className="border p-2 rounded" value={formData.price || ''} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} required />
-            <input placeholder="Unit (e.g. kg, item)" className="border p-2 rounded" value={formData.unit || ''} onChange={e => setFormData({...formData, unit: e.target.value})} required />
-            <input placeholder="Description" className="border p-2 rounded" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
+            <input placeholder="Nama Layanan" className="border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
+            <input placeholder="Harga" type="number" step="100" className="border p-2 rounded" value={formData.price || ''} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} required />
+            <input placeholder="Satuan (kg, item)" className="border p-2 rounded" value={formData.unit || ''} onChange={e => setFormData({...formData, unit: e.target.value})} required />
+            <input placeholder="Deskripsi" className="border p-2 rounded" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
             <div className="col-span-1 md:col-span-4 flex gap-2">
-                <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save Service</button>
-                <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Cancel</button>
+                <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Simpan</button>
+                <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Batal</button>
             </div>
            </form>
         </div>
       )}
 
-      {loading ? <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Loading services...</div> : (
+      {loading ? <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Memuat layanan...</div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {services.map(svc => (
             <div key={svc.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between">
@@ -313,7 +333,7 @@ export const ServiceConfiguration: React.FC = () => {
                 </div>
                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
                 <button onClick={() => { setFormData(svc); setIsEditing(true); }} className="text-blue-600 text-sm font-medium hover:underline">Edit</button>
-                <button onClick={() => handleDelete(svc.id)} className="text-red-500 text-sm font-medium hover:underline">Delete</button>
+                <button onClick={() => handleDelete(svc.id)} className="text-red-500 text-sm font-medium hover:underline">Hapus</button>
                 </div>
             </div>
             ))}

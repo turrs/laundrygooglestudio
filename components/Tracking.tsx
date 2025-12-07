@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SupabaseService } from '../migration/SupabaseService';
 import { Order, OrderStatus } from '../types';
-import { Package, CheckCircle, Clock, Star, MapPin, Phone } from 'lucide-react';
+import { Package, CheckCircle, Clock, Star, ArrowLeft } from 'lucide-react';
 
 interface TrackingPageProps {
   orderId: string;
@@ -55,6 +55,14 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
     }
   };
 
+  // Helper to clear tracking ID and go to login
+  const handleGoHome = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('trackingId');
+      window.history.pushState({}, '', url);
+      window.location.reload();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -68,7 +76,10 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <Package size={64} className="text-slate-300 mb-4" />
         <h1 className="text-2xl font-bold text-slate-800">Pesanan Tidak Ditemukan</h1>
-        <p className="text-slate-500 mt-2">Silakan periksa kembali link tracking Anda.</p>
+        <p className="text-slate-500 mt-2 text-center mb-6">ID Pesanan mungkin salah atau data belum disinkronisasi.</p>
+        <button onClick={handleGoHome} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+             <ArrowLeft size={18} /> Kembali ke Halaman Utama
+        </button>
       </div>
     );
   }
@@ -79,7 +90,10 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Header */}
-        <div className="bg-blue-600 p-8 text-white text-center">
+        <div className="bg-blue-600 p-8 text-white text-center relative">
+          <button onClick={handleGoHome} className="absolute left-6 top-6 p-2 bg-blue-700 rounded-full hover:bg-blue-800 transition">
+             <ArrowLeft size={20} />
+          </button>
           <h1 className="text-2xl font-bold mb-2">LaunderLink Tracking</h1>
           <p className="opacity-90 bg-blue-700 inline-block px-3 py-1 rounded-lg text-sm">Order #{order.id.slice(0, 8)}</p>
         </div>

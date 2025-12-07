@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { SupabaseService } from '../migration/SupabaseService';
 import { Order, OrderStatus } from '../types';
-import { TrendingUp, DollarSign, Package, Star, MessageSquare, Briefcase, UserCheck } from 'lucide-react';
+import { TrendingUp, DollarSign, Package, Star, MessageSquare, Briefcase, UserCheck, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 export const AnalyticsDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [expensesAmount, setExpensesAmount] = useState(0);
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [statusData, setStatusData] = useState<any[]>([]);
   const [staffData, setStaffData] = useState<any[]>([]);
@@ -18,9 +19,13 @@ export const AnalyticsDashboard: React.FC = () => {
 
   const fetchData = async () => {
     try {
-        const data = await SupabaseService.getOrders();
-        setOrders(data);
-        processData(data);
+        const [ordersData, expensesData] = await Promise.all([
+          SupabaseService.getOrders(),
+          SupabaseService.getExpenses()
+        ]);
+        setOrders(ordersData);
+        setExpensesAmount(expensesData.reduce((sum, e) => sum + e.amount, 0));
+        processData(ordersData);
     } catch (err) {
         console.error("Failed to fetch dashboard data", err);
     } finally {
@@ -90,6 +95,7 @@ export const AnalyticsDashboard: React.FC = () => {
   };
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const netProfit = totalRevenue - expensesAmount;
   const ratedOrders = orders.filter(o => o.rating && o.rating > 0);
   const avgRating = ratedOrders.length > 0 
     ? (ratedOrders.reduce((sum, o) => sum + (o.rating || 0), 0) / ratedOrders.length).toFixed(1)
@@ -109,28 +115,34 @@ export const AnalyticsDashboard: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500 flex items-center justify-between">
            <div>
-              <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Pendapatan</p>
+              <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Omzet Kotor</p>
               <p className="text-2xl font-bold text-slate-800 mt-1">Rp {totalRevenue.toLocaleString('id-ID')}</p>
+              <div className="flex items-center text-xs text-green-600 mt-1 font-medium"><ArrowUpRight size={14}/> Pendapatan</div>
            </div>
            <div className="bg-green-100 p-3 rounded-full text-green-600"><DollarSign size={24} /></div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500 flex items-center justify-between">
+        
+        <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500 flex items-center justify-between">
            <div>
-              <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Total Pesanan</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{orders.length}</p>
+              <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Pengeluaran</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">Rp {expensesAmount.toLocaleString('id-ID')}</p>
+              <div className="flex items-center text-xs text-red-500 mt-1 font-medium"><ArrowDownRight size={14}/> Beban Operasional</div>
            </div>
-           <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Package size={24} /></div>
+           <div className="bg-red-100 p-3 rounded-full text-red-600"><Wallet size={24} /></div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-purple-500 flex items-center justify-between">
+
+        <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-xl shadow-lg flex items-center justify-between text-white">
            <div>
-              <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Rata-rata Order</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">Rp {orders.length ? (totalRevenue / orders.length).toLocaleString('id-ID') : '0'}</p>
+              <p className="text-blue-100 text-xs uppercase font-bold tracking-wider">Profit Bersih</p>
+              <p className="text-2xl font-bold mt-1">Rp {netProfit.toLocaleString('id-ID')}</p>
+              <p className="text-xs text-blue-200 mt-1">Omzet - Pengeluaran</p>
            </div>
-           <div className="bg-purple-100 p-3 rounded-full text-purple-600"><TrendingUp size={24} /></div>
+           <div className="bg-white/20 p-3 rounded-full text-white"><TrendingUp size={24} /></div>
         </div>
+
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-yellow-400 flex items-center justify-between">
            <div>
               <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Rating Toko</p>
