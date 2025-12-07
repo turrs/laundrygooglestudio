@@ -1,3 +1,4 @@
+
 export enum UserRole {
   OWNER = 'OWNER',
   STAFF = 'STAFF'
@@ -18,6 +19,7 @@ export interface User {
   role: UserRole;
   locationId?: string; // For staff
   password?: string; // Mocking auth
+  isApproved?: boolean; // New field for approval workflow
 }
 
 export interface Location {

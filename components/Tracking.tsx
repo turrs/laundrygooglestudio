@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { SupabaseService } from '../migration/SupabaseService';
 import { Order, OrderStatus } from '../types';
-import { Package, CheckCircle, Clock, Star, ArrowLeft } from 'lucide-react';
+import { Package, CheckCircle, Clock, Star, ArrowLeft, RefreshCcw, WifiOff } from 'lucide-react';
 
 interface TrackingPageProps {
   orderId: string;
@@ -13,23 +14,40 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
     fetchOrder();
   }, [orderId]);
 
   const fetchOrder = async () => {
+    setLoading(true);
+    setTimedOut(false);
+
+    // Create a promise that rejects after 8 seconds
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('timeout')), 8000);
+    });
+
     try {
-        // Use the specific fetch method which is lighter and more reliable for single items
-        const found = await SupabaseService.getOrderById(orderId);
+        // Race between fetch and timeout
+        const found: any = await Promise.race([
+            SupabaseService.getOrderById(orderId),
+            timeoutPromise
+        ]);
+
         setOrder(found || null);
         if (found && found.rating) {
             setRating(found.rating);
             setReview(found.review || '');
             setSubmitted(true);
         }
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        if (e.message === 'timeout') {
+            setTimedOut(true);
+        } else {
+            console.error(e);
+        }
     } finally {
         setLoading(false);
     }
@@ -65,9 +83,30 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p className="text-slate-500 animate-pulse">Sedang mencari data pesanan...</p>
       </div>
+    );
+  }
+
+  // Fallback UI for Timeout
+  if (timedOut) {
+    return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+            <div className="bg-orange-100 p-4 rounded-full text-orange-600 mb-4">
+                <WifiOff size={48} />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-800 mb-2">Koneksi Lambat</h1>
+            <p className="text-slate-500 max-w-sm mb-6">Sistem membutuhkan waktu terlalu lama untuk mengambil data. Mohon periksa internet Anda atau coba lagi nanti.</p>
+            
+            <button onClick={fetchOrder} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition shadow-lg mb-4">
+                <RefreshCcw size={18} /> Coba Lagi
+            </button>
+            <button onClick={handleGoHome} className="text-slate-400 hover:text-slate-600 text-sm">
+                Kembali ke Halaman Utama
+            </button>
+        </div>
     );
   }
 

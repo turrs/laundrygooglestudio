@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { User, Location, Service, Customer, Order, OrderStatus, UserRole, Expense } from '../types';
 
@@ -33,8 +34,28 @@ export const SupabaseService = {
       name: profile.name,
       email: profile.email,
       role: profile.role as UserRole,
-      locationId: profile.location_id
+      locationId: profile.location_id,
+      isApproved: profile.is_approved
     };
+  },
+
+  async approveStaff(profileId: string): Promise<void> {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_approved: true })
+        .eq('id', profileId);
+      
+      if (error) throw error;
+  },
+
+  async rejectStaff(profileId: string): Promise<void> {
+      // Option A: Just delete the profile
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', profileId);
+        
+      if (error) throw error;
   },
 
   // --- LOCATIONS ---

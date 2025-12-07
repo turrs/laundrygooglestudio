@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { supabase } from '../migration/supabaseClient';
@@ -58,15 +59,27 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         if (profile.role !== role) {
           setError(`Account found, but role does not match. Please switch tabs.`);
           await (supabase.auth as any).signOut();
-        } else {
-           onLogin({
+          setLoading(false);
+          return;
+        }
+
+        // --- CHECK APPROVAL ---
+        // If it's a STAFF and is_approved is false, deny login.
+        if (profile.role === UserRole.STAFF && profile.is_approved === false) {
+           await (supabase.auth as any).signOut();
+           setError("Akun Anda belum disetujui oleh Owner. Silakan hubungi Owner toko.");
+           setLoading(false);
+           return;
+        }
+
+        onLogin({
              id: profile.id,
              name: profile.name,
              email: profile.email,
              role: profile.role as UserRole,
-             locationId: profile.location_id
-           });
-        }
+             locationId: profile.location_id,
+             isApproved: profile.is_approved
+        });
       }
     } catch (err: any) {
       console.error("Login Error:", err);
@@ -102,7 +115,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
       if (data.user) {
         // 2. Create Profile Record
-        // We map auth_id to the user.id
+        // Logic: Owner is auto-approved, Staff needs approval.
+        const isApproved = role === UserRole.OWNER;
+        
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([
@@ -111,36 +126,44 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               auth_id: data.user.id,
               name: cleanName,
               email: cleanEmail,
-              role: UserRole.OWNER,
+              role: role,
+              is_approved: isApproved
             }
           ]);
 
         if (profileError) {
            console.error("Profile creation error:", JSON.stringify(profileError));
-           // If duplicate key error, it means profile exists. We can proceed.
            if (profileError.code !== '23505') { // 23505 is unique_violation
-              // Just warn, don't block, in case we are recovering an account
               console.warn("Could not create profile, possibly already exists.");
            }
         }
 
-        // 3. Check if email confirmation is required
-        if (data.user && !data.session) {
-            setSuccessMsg("Registration successful! Please check your email to confirm your account before logging in.");
-            setLoading(false);
-            return;
-        }
+        setLoading(false);
 
-        onLogin({
-            id: data.user.id,
-            name: cleanName,
-            email: cleanEmail,
-            role: UserRole.OWNER
-        });
+        // 3. Post-Registration Logic
+        if (!isApproved) {
+            // Staff flow: Show message, don't login
+            setSuccessMsg("Registrasi berhasil! Akun Anda sedang menunggu persetujuan Owner. Silakan tunggu konfirmasi.");
+            // Force logout just in case supabase session persisted
+            await (supabase.auth as any).signOut();
+        } else {
+             // Owner flow: Login immediately
+             if (data.user && !data.session) {
+                setSuccessMsg("Registration successful! Please check your email to confirm your account before logging in.");
+                return;
+             }
+
+             onLogin({
+                id: data.user.id,
+                name: cleanName,
+                email: cleanEmail,
+                role: UserRole.OWNER,
+                isApproved: true
+            });
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
-    } finally {
       setLoading(false);
     }
   };
@@ -221,15 +244,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 {loading ? <Loader2 className="animate-spin" /> : 'Login'}
               </button>
 
-              {role === UserRole.OWNER && (
-                 <p className="text-center text-sm text-slate-600 mt-4">
-                   New business? <button type="button" onClick={() => { setView('REGISTER'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-medium hover:underline">Register here</button>
-                 </p>
-              )}
+              <p className="text-center text-sm text-slate-600 mt-4">
+                 Don't have an account? <button type="button" onClick={() => { setView('REGISTER'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-medium hover:underline">Register here</button>
+              </p>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Owner Registration</h2>
+              <h2 className="text-xl font-semibold text-slate-800 mb-4">{role === UserRole.OWNER ? 'Owner Registration' : 'Staff Registration'}</h2>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
                 <input 
@@ -247,7 +268,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   type="email" 
                   required
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="owner@laundry.com"
+                  placeholder={role === UserRole.OWNER ? "owner@laundry.com" : "staff@laundry.com"}
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                 />
@@ -272,7 +293,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               )}
 
               <button type="submit" disabled={loading} className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg transition shadow-md flex items-center justify-center">
-                {loading ? <Loader2 className="animate-spin" /> : 'Create Account'}
+                {loading ? <Loader2 className="animate-spin" /> : (role === UserRole.OWNER ? 'Create Owner Account' : 'Register as Staff')}
               </button>
               
               <p className="text-center text-sm text-slate-600 mt-4">

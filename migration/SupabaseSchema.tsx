@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const SQL_SCHEMA = `
@@ -47,7 +48,7 @@ create table public.customers (
 );
 
 -- Profiles
--- Note: removed strict 'references auth.users' to allow Owner to add Staff manually without them having an account yet.
+-- Added is_approved column. Default true for safety, logic will handle setting false for staff.
 create table public.profiles (
   id uuid default gen_random_uuid() primary key, 
   auth_id uuid references auth.users(id), -- Optional link to real Auth user
@@ -55,6 +56,7 @@ create table public.profiles (
   email text not null,
   role text not null check (role in ('OWNER', 'STAFF')),
   location_id uuid references public.locations(id),
+  is_approved boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -148,7 +150,7 @@ export const SupabaseSchema = () => {
       <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
         <div>
             <h3 className="text-xl font-bold text-red-400">PENTING: Reset Database Schema</h3>
-            <p className="text-slate-400 text-sm">Masalah input data terjadi karena struktur tabel tidak sesuai. <br/>Copy kode di bawah, lalu paste & jalankan di <strong>Supabase SQL Editor</strong> untuk memperbaiki tabel.</p>
+            <p className="text-slate-400 text-sm">Update Skema Database diperlukan (Kolom Approval). <br/>Copy kode di bawah, lalu paste & jalankan di <strong>Supabase SQL Editor</strong>.</p>
         </div>
         <button 
           onClick={handleCopy}
