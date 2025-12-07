@@ -241,9 +241,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     if (qty < 0) return; // Prevent negative inputs
     
     if (qty === 0) {
-       // If 0, maybe remove? Or keep as 0 until user deletes? 
-       // For better UX on typing decimals, we allow it, but remove if submitted/filtered.
-       // Here we just update state.
        setCart(prev => prev.filter(i => i.serviceId !== serviceId));
     } else {
        setCart(prev => prev.map(i => i.serviceId === serviceId ? {...i, quantity: qty} : i));
@@ -263,9 +260,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
       
       try {
         const savedCust = await SupabaseService.saveCustomer(newCust);
-        setCustomers(prev => [savedCust, ...prev]); // Add to top with REAL UUID
+        setCustomers(prev => [savedCust, ...prev]); 
       
-        // Auto select the new customer with REAL UUID
         setNewOrderCustId(savedCust.id);
         setCustSearchTerm(savedCust.name);
         
@@ -287,7 +283,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
   const handleCustSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setCustSearchTerm(e.target.value);
       setShowCustDropdown(true);
-      if (newOrderCustId) setNewOrderCustId(''); // Clear selection if typing
+      if (newOrderCustId) setNewOrderCustId(''); 
   };
 
   const submitOrder = async () => {
@@ -330,43 +326,113 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     setCustSearchTerm('');
   };
 
-  // Helper for WhatsApp
-  const sendWhatsApp = (phone: string, message: string) => {
-    let formatted = phone.replace(/\D/g, '');
-    if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
-    if (!formatted.startsWith('62')) formatted = '62' + formatted; // Default to ID if no code
-    const url = `https://wa.me/${formatted}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-  };
-
+  // --- Helper: Get Full WhatsApp Message with Laundry Details ---
   const handleSendWaNewOrder = (order: Order) => {
     const customer = customers.find(c => c.id === order.customerId);
+    const location = locations.find(l => l.id === order.locationId);
+    
     if (!customer) return;
     
     const trackingLink = `${window.location.origin}?trackingId=${order.id}`;
-    const msg = `Halo ${customer.name}, pesanan laundry #${order.id.slice(0, 8)} telah diterima.\n\nTotal: Rp ${order.totalAmount.toLocaleString('id-ID')}\nItem: ${order.items.length}\n\nPantau status pesanan: ${trackingLink}\n\nTerima kasih!`;
-    sendWhatsApp(customer.phone, msg);
+    const laundryName = location ? location.name : 'LaunderLink Pro';
+    const laundryAddr = location ? location.address : '';
+    const laundryPhone = location ? location.phone : '';
+
+    // Build Item List String
+    let itemsDetails = "";
+    order.items.forEach(item => {
+        // Find service unit if possible, usually snapshot doesn't store unit but types.ts has unit in Service
+        // We can try to find the service in the current services list to get the unit
+        const svc = services.find(s => s.id === item.serviceId);
+        const unit = svc ? svc.unit : 'item/kg';
+        itemsDetails += `• ${item.serviceName} (${item.quantity} ${unit}) x ${item.price.toLocaleString('id-ID')} = Rp ${(item.price * item.quantity).toLocaleString('id-ID')}%0A`;
+    });
+
+    const msg = 
+`*${laundryName}*%0A` +
+`${laundryAddr}%0A` +
+`Telp: ${laundryPhone}%0A` +
+`--------------------------------%0A` +
+`*NOTA PESANAN*%0A` +
+`No Order: #${order.id.slice(0, 8)}%0A` +
+`Tanggal: ${new Date(order.createdAt).toLocaleString('id-ID')}%0A` +
+`Pelanggan: ${customer.name}%0A` +
+`Parfum: ${order.perfume || 'Standard'}%0A` +
+`--------------------------------%0A` +
+`${itemsDetails}` +
+`--------------------------------%0A` +
+`*TOTAL: Rp ${order.totalAmount.toLocaleString('id-ID')}*%0A` +
+`--------------------------------%0A` +
+`Pantau status pesanan anda disini:%0A` +
+`${trackingLink}%0A%0A` +
+`Terima kasih telah menggunakan jasa kami!`;
+
+    // Send
+    let formatted = customer.phone.replace(/\D/g, '');
+    if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
+    if (!formatted.startsWith('62')) formatted = '62' + formatted; 
+    
+    const url = `https://wa.me/${formatted}?text=${msg}`; // Already encoded in template partially, but safer to construct raw and encode
+    // Note: The template above uses %0A which is URL encoded newline. 
+    // If we use encodeURIComponent on the whole string, we should write real newlines \n.
+    // Let's rewrite using standard strings and encodeURIComponent.
+    
+    const cleanMsg = 
+`*${laundryName}*
+${laundryAddr}
+Telp: ${laundryPhone}
+--------------------------------
+*NOTA PESANAN*
+No Order: #${order.id.slice(0, 8)}
+Tanggal: ${new Date(order.createdAt).toLocaleString('id-ID')}
+Pelanggan: ${customer.name}
+Parfum: ${order.perfume || 'Standard'}
+--------------------------------
+${itemsDetails.replace(/%0A/g, '\n')}--------------------------------
+*TOTAL: Rp ${order.totalAmount.toLocaleString('id-ID')}*
+--------------------------------
+Pantau status pesanan anda disini:
+${trackingLink}
+
+Terima kasih telah menggunakan jasa kami!`;
+
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(cleanMsg)}`, '_blank');
   };
   
-  // Helper for RawBT Printing
+  // --- Helper: RawBT Receipt Printing with Laundry Details ---
   const handlePrintReceipt = (order: Order) => {
+    const loc = locations.find(l => l.id === order.locationId);
+    const locName = loc?.name || 'LaunderLink Pro';
+    const locAddr = loc?.address || '';
+    const locPhone = loc?.phone || '';
+
     // 1. Construct Receipt Text
     const line = "--------------------------------\n";
-    const locName = locations.find(l => l.id === order.locationId)?.name || 'LaunderLink Pro';
     
     let text = "";
+    // Header
     text += `${locName}\n`;
-    text += `STRUK PESANAN\n`;
-    text += line;
-    text += `No Order : #${order.id.slice(0, 8)}\n`;
-    text += `Tanggal  : ${new Date(order.createdAt).toLocaleString()}\n`;
-    text += `Pelanggan: ${order.customerName}\n`;
-    text += `Kasir    : ${order.receivedBy || '-'}\n`;
+    if(locAddr) text += `${locAddr}\n`;
+    if(locPhone) text += `${locPhone}\n`;
     text += line;
     
+    // Meta
+    text += `STRUK PESANAN\n`;
+    text += `No Order : #${order.id.slice(0, 8)}\n`;
+    text += `Tanggal  : ${new Date(order.createdAt).toLocaleString('id-ID')}\n`;
+    text += `Pelanggan: ${order.customerName}\n`;
+    text += `Kasir    : ${order.receivedBy || '-'}\n`;
+    text += `Parfum   : ${order.perfume || 'Standard'}\n`;
+    text += line;
+    
+    // Items
     order.items.forEach(item => {
+        const svc = services.find(s => s.id === item.serviceId);
+        const unit = svc ? svc.unit : '';
+        
         text += `${item.serviceName}\n`;
-        text += `${item.quantity} x Rp ${item.price.toLocaleString('id-ID')} = Rp ${(item.quantity * item.price).toLocaleString('id-ID')}\n`;
+        // Format: 5 kg x 5.000 = 25.000
+        text += `${item.quantity} ${unit} x Rp ${item.price.toLocaleString('id-ID')} = Rp ${(item.quantity * item.price).toLocaleString('id-ID')}\n`;
     });
     
     text += line;
@@ -407,9 +473,17 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
        const targetOrder = orderToReady || orders.find(o => o.id === orderId);
        if (targetOrder) {
            const customer = customers.find(c => c.id === targetOrder.customerId);
+           const loc = locations.find(l => l.id === targetOrder.locationId);
+           const laundryName = loc ? loc.name : "Laundry";
+
            if (customer) {
-               const msg = `Halo ${customer.name}, Laundry #${targetOrder.id.slice(0, 8)} sudah SELESAI dan siap diambil! \n\nTotal: Rp ${targetOrder.totalAmount.toLocaleString('id-ID')}\n\nTerima kasih telah mempercayakan laundry Anda kepada kami.`;
-               sendWhatsApp(customer.phone, msg);
+               const msg = `Halo ${customer.name}, Cucian Anda di *${laundryName}* (Order #${targetOrder.id.slice(0, 8)}) sudah SELESAI dan siap diambil! \n\nTotal: Rp ${targetOrder.totalAmount.toLocaleString('id-ID')}\n\nTerima kasih.`;
+               
+                let formatted = customer.phone.replace(/\D/g, '');
+                if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
+                if (!formatted.startsWith('62')) formatted = '62' + formatted; 
+               
+               window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(msg)}`, '_blank');
            }
        }
     }

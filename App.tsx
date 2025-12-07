@@ -35,17 +35,22 @@ const App: React.FC = () => {
     return params.get('trackingId');
   });
   
-  // OPTIMIZATION: If trackingId is present, start with isLoading = false.
-  // This ensures the public Tracking Page renders immediately and isn't blocked 
-  // by the authentication check (initSession), which might hang or be slow.
+  // Initial loading state
   const [isLoading, setIsLoading] = useState(!trackingId);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      // If config missing, stop loading to show config screen (unless tracking, which might be public but needs config too)
       if (isLoading) setIsLoading(false);
       return;
     }
+
+    // Failsafe: Force stop loading after 5 seconds if auth hangs (common in multi-tab usage)
+    const timeoutId = setTimeout(() => {
+        if (isLoading) {
+            console.warn("Auth check timed out, forcing render.");
+            setIsLoading(false);
+        }
+    }, 5000);
 
     const initSession = async () => {
       try {
@@ -54,6 +59,8 @@ const App: React.FC = () => {
 
         if (!session) {
            setUser(null);
+           // IMPORTANT: explicitly stop loading here
+           if (!trackingId) setIsLoading(false);
            return; 
         }
 
@@ -73,7 +80,6 @@ const App: React.FC = () => {
         setUser(null);
       } finally {
         // Only trigger re-render if we were actually loading (i.e. not in tracking mode)
-        // This prevents double-rendering on tracking page
         if (!trackingId) {
             setIsLoading(false);
         }
@@ -96,6 +102,7 @@ const App: React.FC = () => {
     });
 
     return () => {
+      clearTimeout(timeoutId);
       authListener.subscription.unsubscribe();
     };
   }, [trackingId]); // Depend on trackingId to ensure stability
