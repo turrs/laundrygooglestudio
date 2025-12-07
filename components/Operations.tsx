@@ -303,6 +303,44 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     const msg = `Halo ${customer.name}, pesanan laundry #${order.id.slice(0, 8)} telah diterima.\n\nTotal: $${order.totalAmount.toFixed(2)}\nItem: ${order.items.length}\n\nPantau status pesanan: ${trackingLink}\n\nTerima kasih!`;
     sendWhatsApp(customer.phone, msg);
   };
+  
+  // Helper for RawBT Printing
+  const handlePrintReceipt = (order: Order) => {
+    // 1. Construct Receipt Text
+    // Note: Simple text formatting for thermal printers
+    const center = (str: string) => str; // RawBT handles alignment if we use simple layout or special commands. Using simple text for broad compatibility.
+    const line = "--------------------------------\n";
+    const locName = locations.find(l => l.id === order.locationId)?.name || 'LaunderLink Pro';
+    
+    let text = "";
+    text += `${locName}\n`;
+    text += `STRUK PESANAN\n`;
+    text += line;
+    text += `No Order : #${order.id.slice(0, 8)}\n`;
+    text += `Tanggal  : ${new Date(order.createdAt).toLocaleString()}\n`;
+    text += `Pelanggan: ${order.customerName}\n`;
+    text += `Kasir    : ${order.receivedBy || '-'}\n`;
+    text += line;
+    
+    order.items.forEach(item => {
+        text += `${item.serviceName}\n`;
+        text += `${item.quantity} x $${item.price.toFixed(2)} = $${(item.quantity * item.price).toFixed(2)}\n`;
+    });
+    
+    text += line;
+    text += `TOTAL    : $${order.totalAmount.toFixed(2)}\n`;
+    text += line;
+    text += `Terima Kasih\n`;
+    text += `Simpan struk ini sbg bukti\n`;
+    text += `\n\n`; // Feed lines
+    
+    // 2. Encode to Base64
+    const base64Text = btoa(text);
+    
+    // 3. Trigger RawBT Intent
+    // "rawbt:base64," works well for text content
+    window.location.href = 'rawbt:base64,' + base64Text;
+  };
 
   const initiateStatusUpdate = (order: Order, newStatus: OrderStatus) => {
     if (newStatus === OrderStatus.READY) {
@@ -325,9 +363,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     
     // 2. Handle WhatsApp Notification for READY status
     if (status === OrderStatus.READY && sendWaNotification) {
-       // Need to find order details to get customerId. 
-       // We can use 'orderToReady' if available, or find in 'orders' (before update logic runs, but we have optimistic state)
-       // Safer to use the order object if we have it.
        const targetOrder = orderToReady || orders.find(o => o.id === orderId);
        if (targetOrder) {
            const customer = customers.find(c => c.id === targetOrder.customerId);
@@ -366,15 +401,22 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
              <div className="flex justify-between"><span>Tracking Link</span><span className="text-blue-600 underline cursor-pointer" onClick={() => navigator.clipboard.writeText(`${window.location.origin}?trackingId=${lastOrder.id}`)}>Copy Link</span></div>
           </div>
           
-          <div className="mt-6 w-full max-w-md">
+          <div className="mt-6 w-full max-w-md space-y-3">
              <button 
                 onClick={() => handleSendWaNewOrder(lastOrder)}
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 mb-4 shadow-md transition-all"
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all"
              >
                 <MessageCircle size={20} /> Kirim Nota WhatsApp
              </button>
+
+             <button 
+                onClick={() => handlePrintReceipt(lastOrder)}
+                className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all"
+             >
+                <Printer size={20} /> Cetak Struk (RawBT)
+             </button>
              
-             <div className="flex gap-4">
+             <div className="flex gap-4 pt-2">
                 <button onClick={() => setLastOrder(null)} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">Buat Baru</button>
                 <button onClick={() => { setLastOrder(null); setView('LIST'); }} className="flex-1 text-slate-600 py-2 rounded-lg hover:bg-slate-100 border border-slate-200">Ke Daftar</button>
              </div>
