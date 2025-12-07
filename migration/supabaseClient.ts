@@ -19,8 +19,8 @@ const getEnv = (key: string, legacyKey: string) => {
   return '';
 };
 
-const supabaseUrl = getEnv('VITE_SUPABASE_URL', 'REACT_APP_SUPABASE_URL') || 'https://wxoehohuxmjzjlkpxayw.supabase.co';
-const supabaseKey = getEnv('VITE_SUPABASE_ANON_KEY', 'REACT_APP_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4b2Vob2h1eG1qempsa3B4YXl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMDU3NDksImV4cCI6MjA4MDY4MTc0OX0.b3dC4kHCwE-r5EN8zm5qRftwQSPWIx6Aoowp61Kxdtc';
+const supabaseUrl = getEnv('VITE_SUPABASE_URL', 'REACT_APP_SUPABASE_URL') || '';
+const supabaseKey = getEnv('VITE_SUPABASE_ANON_KEY', 'REACT_APP_SUPABASE_ANON_KEY') || '';
 
 // 2. Validate Configuration
 export const isSupabaseConfigured = Boolean(
