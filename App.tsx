@@ -37,20 +37,21 @@ const App: React.FC = () => {
 
     const initSession = async () => {
       try {
-        // 1. Check for tracking URL param first
+        // 1. Check for tracking URL param
         const params = new URLSearchParams(window.location.search);
         const tid = params.get('trackingId');
         if (tid) {
           setTrackingId(tid);
-          return; // Stop here, loading will be handled in finally
+          // CRITICAL FIX: Do NOT return here. 
+          // We must proceed to getSession() so Supabase loads the token from localStorage.
+          // Otherwise, the new tab starts with a "cold" client and might fail data fetching.
         }
 
-        // 2. Check Local Storage Session first (Fast & Synchronous-like)
-        // This prevents waiting for a network timeout if the user isn't logged in.
+        // 2. Check Local Storage Session
+        // This ensures the client is authenticated if a token exists.
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
-           // No local session, stop loading immediately
            setUser(null);
            return;
         }
@@ -59,10 +60,12 @@ const App: React.FC = () => {
         const profile = await SupabaseService.getCurrentProfile();
         if (profile) {
           setUser(profile);
-          setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+          // Only change tab if we are NOT in tracking mode
+          if (!tid) {
+             setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+          }
         } else {
           // Session exists but no profile? Might be a mismatch, clear it.
-          // await supabase.auth.signOut(); 
           setUser(null);
         }
       } catch (error) {
@@ -80,8 +83,10 @@ const App: React.FC = () => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         // Only fetch profile if we don't have it (avoid redundant fetches)
-        const profile = await SupabaseService.getCurrentProfile();
-        if (profile) setUser(profile);
+        if (!user) {
+            const profile = await SupabaseService.getCurrentProfile();
+            if (profile) setUser(profile);
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setActiveTab('DASHBOARD'); // Reset tab

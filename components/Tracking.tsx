@@ -20,8 +20,8 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
 
   const fetchOrder = async () => {
     try {
-        const orders = await SupabaseService.getOrders(); // Optimization: In real app, make getOrderById(id)
-        const found = orders.find(o => o.id === orderId);
+        // Use the specific fetch method which is lighter and more reliable for single items
+        const found = await SupabaseService.getOrderById(orderId);
         setOrder(found || null);
         if (found && found.rating) {
             setRating(found.rating);
@@ -117,12 +117,12 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
                 {order.items.map((item, i) => (
                   <div key={i} className="flex justify-between text-sm items-center">
                     <span className="text-slate-700 font-medium">{item.serviceName} <span className="text-slate-400 text-xs ml-1">x {item.quantity}</span></span>
-                    <span className="font-bold text-slate-800">${(item.price * item.quantity).toFixed(2)}</span>
+                    <span className="font-bold text-slate-800">Rp {(item.price * item.quantity).toLocaleString('id-ID')}</span>
                   </div>
                 ))}
                 <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-4">
                    <span className="text-slate-500 font-medium">Total Tagihan</span>
-                   <span className="text-xl font-extrabold text-blue-600">${order.totalAmount.toFixed(2)}</span>
+                   <span className="text-xl font-extrabold text-blue-600">Rp {order.totalAmount.toLocaleString('id-ID')}</span>
                 </div>
              </div>
           </div>

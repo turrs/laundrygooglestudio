@@ -284,7 +284,7 @@ export const ServiceConfiguration: React.FC = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <input placeholder="Service Name" className="border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-            <input placeholder="Price" type="number" step="0.01" className="border p-2 rounded" value={formData.price || ''} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} required />
+            <input placeholder="Price" type="number" step="100" className="border p-2 rounded" value={formData.price || ''} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} required />
             <input placeholder="Unit (e.g. kg, item)" className="border p-2 rounded" value={formData.unit || ''} onChange={e => setFormData({...formData, unit: e.target.value})} required />
             <input placeholder="Description" className="border p-2 rounded" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
             <div className="col-span-1 md:col-span-4 flex gap-2">
@@ -304,7 +304,7 @@ export const ServiceConfiguration: React.FC = () => {
                         <h3 className="font-bold text-lg text-slate-800">{svc.name}</h3>
                         <Tag size={20} className="text-slate-400" />
                     </div>
-                    <p className="text-2xl font-bold text-blue-600 mt-2">${svc.price.toFixed(2)} <span className="text-sm text-slate-500 font-normal">/ {svc.unit}</span></p>
+                    <p className="text-2xl font-bold text-blue-600 mt-2">Rp {svc.price.toLocaleString('id-ID')} <span className="text-sm text-slate-500 font-normal">/ {svc.unit}</span></p>
                     <p className="text-slate-500 text-sm mt-2">{svc.description}</p>
                 </div>
                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">

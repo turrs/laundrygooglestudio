@@ -165,6 +165,45 @@ export const SupabaseService = {
     }));
   },
 
+  async getOrderById(orderId: string): Promise<Order | null> {
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        items:order_items (*)
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (error) {
+        console.error("Error fetching specific order:", error);
+        return null;
+    }
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      customerId: data.customer_id,
+      customerName: data.customer_name,
+      locationId: data.location_id,
+      totalAmount: data.total_amount,
+      status: data.status as OrderStatus,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      perfume: data.perfume,
+      receivedBy: data.received_by,
+      completedBy: data.completed_by,
+      rating: data.rating,
+      review: data.review,
+      items: data.items.map((i: any) => ({
+        serviceId: i.service_id,
+        serviceName: i.service_name,
+        price: i.price,
+        quantity: i.quantity
+      }))
+    };
+  },
+
   async saveOrder(ord: Order): Promise<Order> {
     try {
       const isNew = ord.id.startsWith('ord-');

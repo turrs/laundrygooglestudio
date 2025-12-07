@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { SupabaseService } from '../migration/SupabaseService';
-import { generateBusinessInsights } from '../services/gemini';
 import { Order, OrderStatus } from '../types';
-import { Sparkles, TrendingUp, DollarSign, Package, Star, MessageSquare, Briefcase, UserCheck } from 'lucide-react';
+import { TrendingUp, DollarSign, Package, Star, MessageSquare, Briefcase, UserCheck } from 'lucide-react';
 
 export const AnalyticsDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -11,8 +10,6 @@ export const AnalyticsDashboard: React.FC = () => {
   const [statusData, setStatusData] = useState<any[]>([]);
   const [staffData, setStaffData] = useState<any[]>([]);
   const [staffDetails, setStaffDetails] = useState<any[]>([]);
-  const [insights, setInsights] = useState<{summary: string, tips: string[]} | null>(null);
-  const [loadingAi, setLoadingAi] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
@@ -92,14 +89,6 @@ export const AnalyticsDashboard: React.FC = () => {
     setStaffDetails(staffList);
   };
 
-  const handleGenerateInsights = async () => {
-    setLoadingAi(true);
-    const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-    const result = await generateBusinessInsights(orders, totalRevenue);
-    setInsights(result);
-    setLoadingAi(false);
-  };
-
   const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
   const ratedOrders = orders.filter(o => o.rating && o.rating > 0);
   const avgRating = ratedOrders.length > 0 
@@ -117,14 +106,6 @@ export const AnalyticsDashboard: React.FC = () => {
             <h2 className="text-2xl font-bold text-slate-800">Dashboard & Statistik</h2>
             <p className="text-slate-500 text-sm">Pantau performa bisnis laundry Anda.</p>
         </div>
-        <button 
-            onClick={handleGenerateInsights} 
-            disabled={loadingAi}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 py-2.5 rounded-lg hover:shadow-lg hover:scale-105 transition-all disabled:opacity-70 disabled:hover:scale-100"
-        >
-            <Sparkles size={18} />
-            {loadingAi ? 'Menganalisa...' : 'Analisa AI'}
-        </button>
       </div>
 
       {/* Stats Cards */}
@@ -132,7 +113,7 @@ export const AnalyticsDashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500 flex items-center justify-between">
            <div>
               <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Pendapatan</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">${totalRevenue.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">Rp {totalRevenue.toLocaleString('id-ID')}</p>
            </div>
            <div className="bg-green-100 p-3 rounded-full text-green-600"><DollarSign size={24} /></div>
         </div>
@@ -146,7 +127,7 @@ export const AnalyticsDashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-purple-500 flex items-center justify-between">
            <div>
               <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Rata-rata Order</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">${orders.length ? (totalRevenue / orders.length).toFixed(2) : '0.00'}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">Rp {orders.length ? (totalRevenue / orders.length).toLocaleString('id-ID') : '0'}</p>
            </div>
            <div className="bg-purple-100 p-3 rounded-full text-purple-600"><TrendingUp size={24} /></div>
         </div>
@@ -159,22 +140,6 @@ export const AnalyticsDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Insights Section */}
-      {insights && (
-        <div className="bg-gradient-to-br from-indigo-50 to-white p-6 rounded-xl border border-indigo-100 shadow-sm">
-           <h3 className="text-lg font-bold text-indigo-900 flex items-center gap-2 mb-3"><Sparkles size={20} className="text-indigo-600" /> Analisa Strategis AI</h3>
-           <p className="text-slate-700 mb-5 font-medium leading-relaxed">{insights.summary}</p>
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-             {insights.tips.map((tip, i) => (
-                <div key={i} className="bg-white p-4 rounded-lg border border-indigo-50 shadow-sm flex items-start gap-3">
-                   <div className="bg-indigo-100 text-indigo-600 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">{i+1}</div>
-                   <p className="text-sm text-slate-600">{tip}</p>
-                </div>
-             ))}
-           </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
          {/* Charts Column */}
          <div className="lg:col-span-2 space-y-6">
@@ -186,8 +151,8 @@ export const AnalyticsDashboard: React.FC = () => {
                           <LineChart data={revenueData}>
                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                              <XAxis dataKey="date" tick={{fontSize: 10, fill: '#64748b'}} axisLine={false} tickLine={false} />
-                             <YAxis tick={{fontSize: 10, fill: '#64748b'}} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
-                             <Tooltip contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                             <YAxis tick={{fontSize: 10, fill: '#64748b'}} axisLine={false} tickLine={false} tickFormatter={(value) => `${value/1000}k`} />
+                             <Tooltip contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} formatter={(value: any) => `Rp ${value.toLocaleString('id-ID')}`} />
                              <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={3} dot={{r: 4, fill: '#2563eb', strokeWidth: 2, stroke: '#fff'}} />
                           </LineChart>
                        </ResponsiveContainer>
@@ -263,7 +228,7 @@ export const AnalyticsDashboard: React.FC = () => {
                                                     {staff.count}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-right font-medium text-green-600">${staff.revenue.toFixed(2)}</td>
+                                            <td className="p-4 text-right font-medium text-green-600">Rp {staff.revenue.toLocaleString('id-ID')}</td>
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-1 text-yellow-500 font-bold">
                                                     <Star size={14} fill="currentColor" /> {staff.avgRating}

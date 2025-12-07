@@ -237,10 +237,16 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
   };
 
   const updateQuantity = (serviceId: string, qty: number) => {
-    if (qty <= 0) {
-      setCart(prev => prev.filter(i => i.serviceId !== serviceId));
+    // Allow empty or decimals
+    if (qty < 0) return; // Prevent negative inputs
+    
+    if (qty === 0) {
+       // If 0, maybe remove? Or keep as 0 until user deletes? 
+       // For better UX on typing decimals, we allow it, but remove if submitted/filtered.
+       // Here we just update state.
+       setCart(prev => prev.filter(i => i.serviceId !== serviceId));
     } else {
-      setCart(prev => prev.map(i => i.serviceId === serviceId ? {...i, quantity: qty} : i));
+       setCart(prev => prev.map(i => i.serviceId === serviceId ? {...i, quantity: qty} : i));
     }
   };
 
@@ -333,15 +339,13 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     if (!customer) return;
     
     const trackingLink = `${window.location.origin}?trackingId=${order.id}`;
-    const msg = `Halo ${customer.name}, pesanan laundry #${order.id.slice(0, 8)} telah diterima.\n\nTotal: $${order.totalAmount.toFixed(2)}\nItem: ${order.items.length}\n\nPantau status pesanan: ${trackingLink}\n\nTerima kasih!`;
+    const msg = `Halo ${customer.name}, pesanan laundry #${order.id.slice(0, 8)} telah diterima.\n\nTotal: Rp ${order.totalAmount.toLocaleString('id-ID')}\nItem: ${order.items.length}\n\nPantau status pesanan: ${trackingLink}\n\nTerima kasih!`;
     sendWhatsApp(customer.phone, msg);
   };
   
   // Helper for RawBT Printing
   const handlePrintReceipt = (order: Order) => {
     // 1. Construct Receipt Text
-    // Note: Simple text formatting for thermal printers
-    const center = (str: string) => str; // RawBT handles alignment if we use simple layout or special commands. Using simple text for broad compatibility.
     const line = "--------------------------------\n";
     const locName = locations.find(l => l.id === order.locationId)?.name || 'LaunderLink Pro';
     
@@ -357,11 +361,11 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     
     order.items.forEach(item => {
         text += `${item.serviceName}\n`;
-        text += `${item.quantity} x $${item.price.toFixed(2)} = $${(item.quantity * item.price).toFixed(2)}\n`;
+        text += `${item.quantity} x Rp ${item.price.toLocaleString('id-ID')} = Rp ${(item.quantity * item.price).toLocaleString('id-ID')}\n`;
     });
     
     text += line;
-    text += `TOTAL    : $${order.totalAmount.toFixed(2)}\n`;
+    text += `TOTAL    : Rp ${order.totalAmount.toLocaleString('id-ID')}\n`;
     text += line;
     text += `Terima Kasih\n`;
     text += `Simpan struk ini sbg bukti\n`;
@@ -371,7 +375,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     const base64Text = btoa(text);
     
     // 3. Trigger RawBT Intent
-    // "rawbt:base64," works well for text content
     window.location.href = 'rawbt:base64,' + base64Text;
   };
 
@@ -401,7 +404,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
            const customer = customers.find(c => c.id === targetOrder.customerId);
            if (customer) {
                const trackingLink = `${window.location.origin}?trackingId=${targetOrder.id}`;
-               const msg = `Halo ${customer.name}, Laundry #${targetOrder.id.slice(0, 8)} sudah SELESAI dan siap diambil! \n\nTotal: $${targetOrder.totalAmount.toFixed(2)}\n\nTerima kasih telah mempercayakan laundry Anda kepada kami.`;
+               const msg = `Halo ${customer.name}, Laundry #${targetOrder.id.slice(0, 8)} sudah SELESAI dan siap diambil! \n\nTotal: Rp ${targetOrder.totalAmount.toLocaleString('id-ID')}\n\nTerima kasih telah mempercayakan laundry Anda kepada kami.`;
                sendWhatsApp(customer.phone, msg);
            }
        }
@@ -429,7 +432,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
           <h2 className="text-2xl font-bold text-slate-800">Pesanan Berhasil Dibuat!</h2>
           <p className="text-slate-500 mt-2">Order ID: #{lastOrder.id.slice(0, 8)}</p>
           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mt-6 w-full max-w-md text-sm text-left">
-             <div className="flex justify-between mb-2"><span>Total</span><span className="font-bold">${lastOrder.totalAmount.toFixed(2)}</span></div>
+             <div className="flex justify-between mb-2"><span>Total</span><span className="font-bold">Rp {lastOrder.totalAmount.toLocaleString('id-ID')}</span></div>
              <div className="flex justify-between mb-2"><span>Customer</span><span>{lastOrder.customerName}</span></div>
              <div className="flex justify-between"><span>Tracking Link</span><span className="text-blue-600 underline cursor-pointer" onClick={() => navigator.clipboard.writeText(`${window.location.origin}?trackingId=${lastOrder.id}`)}>Copy Link</span></div>
           </div>
@@ -474,8 +477,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
 
     return (
       <div className="h-full flex flex-col md:flex-row gap-6 animate-fade-in overflow-hidden relative">
-        {/* Left: Selection - Scrollable on mobile/desktop */}
-        <div className="flex-1 flex flex-col overflow-y-auto md:overflow-y-auto pb-40 md:pb-0">
+        {/* Left: Selection - Scrollable on mobile/desktop. Increased PB to clear footer on mobile */}
+        <div className="flex-1 flex flex-col overflow-y-auto md:overflow-y-auto pb-[270px] md:pb-0">
           <div className="flex items-center gap-4 mb-4 shrink-0">
              <button onClick={() => setView('LIST')} className="p-2 hover:bg-slate-100 rounded-full text-slate-500"><ArrowRight className="rotate-180" /></button>
              <h2 className="text-2xl font-bold text-slate-800">Buat Pesanan Baru</h2>
@@ -575,7 +578,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
                             <Package size={20} />
                         </div>
                         <span className="font-semibold text-slate-800 text-sm">{svc.name}</span>
-                        <span className="text-xs text-slate-500">${svc.price}/{svc.unit}</span>
+                        <span className="text-xs text-slate-500">Rp {svc.price.toLocaleString('id-ID')}/{svc.unit}</span>
                      </div>
                    ))}
                 </div>
@@ -589,7 +592,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
            <div className="p-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center md:block">
               <h3 className="font-bold text-slate-800 flex items-center gap-2"><ShoppingBag size={18}/> Ringkasan <span className="md:hidden">({cart.length} item)</span></h3>
               {currentCustomer && <p className="text-xs text-slate-500 mt-1 hidden md:block">Cust: {currentCustomer.name}</p>}
-              {/* Mobile Only: Collapse toggle could go here, but fixed height is easier for now */}
            </div>
            
            <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -602,12 +604,21 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
                      <div key={item.serviceId} className="flex justify-between items-center bg-slate-50 p-2 md:p-3 rounded-lg border border-slate-100">
                         <div>
                            <div className="font-medium text-slate-700 text-sm">{svc.name}</div>
-                           <div className="text-xs text-slate-500">${svc.price} x {item.quantity}</div>
+                           <div className="text-xs text-slate-500">Rp {svc.price.toLocaleString('id-ID')} x {item.quantity}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                           <button onClick={() => updateQuantity(item.serviceId, item.quantity - 1)} className="w-6 h-6 bg-white border rounded flex items-center justify-center text-slate-600 hover:bg-slate-100">-</button>
-                           <span className="text-sm font-medium w-4 text-center">{item.quantity}</span>
-                           <button onClick={() => updateQuantity(item.serviceId, item.quantity + 1)} className="w-6 h-6 bg-white border rounded flex items-center justify-center text-slate-600 hover:bg-slate-100">+</button>
+                           {/* Decimal Input for Quantity */}
+                           <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              className="w-16 border border-slate-300 rounded px-2 py-1 text-center text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(item.serviceId, parseFloat(e.target.value) || 0)}
+                           />
+                           <button onClick={() => updateQuantity(item.serviceId, 0)} className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600">
+                               <X size={16} />
+                           </button>
                         </div>
                      </div>
                    );
@@ -618,7 +629,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
            <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0">
               <div className="flex justify-between items-center mb-3">
                  <span className="text-slate-600">Total</span>
-                 <span className="text-2xl font-bold text-blue-600">${cartTotal.toFixed(2)}</span>
+                 <span className="text-2xl font-bold text-blue-600">Rp {cartTotal.toLocaleString('id-ID')}</span>
               </div>
               <button 
                 onClick={submitOrder} 
@@ -677,7 +688,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
                        <p className="text-slate-500 text-sm mt-1">Cust: <span className="font-medium text-slate-700">{order.customerName}</span> | {new Date(order.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="text-right">
-                       <div className="font-extrabold text-xl text-slate-800">${order.totalAmount.toFixed(2)}</div>
+                       <div className="font-extrabold text-xl text-slate-800">Rp {order.totalAmount.toLocaleString('id-ID')}</div>
                        <div className="text-xs text-slate-400">Total</div>
                     </div>
                  </div>
