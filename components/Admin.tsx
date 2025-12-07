@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Location, User, Service, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { MapPin, Users, Tag, Trash2, Plus, Edit2, Loader2 } from 'lucide-react';
+import { MapPin, Tag, Trash2, Plus, Edit2, Loader2 } from 'lucide-react';
 
 // --- LOCATIONS ---
 export const LocationManagement: React.FC = () => {
@@ -86,7 +86,7 @@ export const LocationManagement: React.FC = () => {
         </div>
       )}
 
-      {loading ? <p>Loading locations...</p> : (
+      {loading ? <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Loading locations...</div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {locations.map(loc => (
             <div key={loc.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition">
@@ -197,6 +197,9 @@ export const StaffManagement: React.FC = () => {
         </div>
       )}
 
+      {loading ? (
+         <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Loading staff...</div>
+      ) : (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-500 font-medium">
@@ -226,6 +229,7 @@ export const StaffManagement: React.FC = () => {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 };
@@ -295,7 +299,7 @@ export const ServiceConfiguration: React.FC = () => {
         </div>
       )}
 
-      {loading ? <p>Loading services...</p> : (
+      {loading ? <div className="text-center p-8 text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Loading services...</div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {services.map(svc => (
             <div key={svc.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between">

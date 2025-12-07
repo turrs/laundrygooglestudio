@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { ShoppingBag, Clock, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, ChevronRight, Phone, Loader2, ArrowRight, Send, ChevronDown } from 'lucide-react';
+import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight } from 'lucide-react';
 
 // --- CUSTOMERS ---
 export const CustomerManagement: React.FC = () => {
