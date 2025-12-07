@@ -45,8 +45,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           .single();
 
         if (profileError) {
-             console.error("Profile fetch error:", profileError);
-             throw new Error("Profile not found. Please contact support.");
+             console.error("Profile fetch error:", JSON.stringify(profileError));
+             
+             if (profileError.code === 'PGRST116') {
+                 // PGRST116 means 0 rows found
+                 throw new Error("Login successful, but user profile is missing. Please register again to recreate your profile.");
+             }
+             
+             throw new Error(profileError.message || "Failed to retrieve user profile.");
         }
 
         if (profile.role !== role) {
@@ -63,7 +69,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("Login Error:", err);
       setError(err.message === 'Invalid login credentials' ? 'Invalid email or password.' : err.message);
     } finally {
       setLoading(false);
@@ -110,8 +116,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           ]);
 
         if (profileError) {
-           console.error("Profile creation error:", profileError);
-           // Warning: if triggers are used in DB, this might duplicate, but with our current schema it's manual.
+           console.error("Profile creation error:", JSON.stringify(profileError));
+           // If duplicate key error, it means profile exists. We can proceed.
+           if (profileError.code !== '23505') { // 23505 is unique_violation
+              // Just warn, don't block, in case we are recovering an account
+              console.warn("Could not create profile, possibly already exists.");
+           }
         }
 
         // 3. Check if email confirmation is required

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { SupabaseService } from '../migration/SupabaseService';
 import { Order, OrderStatus } from '../types';
-import { TrendingUp, DollarSign, Package, Star, MessageSquare, Briefcase, UserCheck, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, DollarSign, Star, MessageSquare, Briefcase, UserCheck, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 export const AnalyticsDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);

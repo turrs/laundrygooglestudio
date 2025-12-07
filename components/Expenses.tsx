@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Expense, User, Location } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
-import { Plus, Trash2, Calendar, User as UserIcon, Tag, DollarSign, Filter, Search, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, User as UserIcon, Filter, Loader2 } from 'lucide-react';
 
 interface ExpenseManagementProps {
   currentUser: User;

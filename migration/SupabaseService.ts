@@ -23,7 +23,7 @@ export const SupabaseService = {
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 is 'not found'
-        console.error("Error fetching profile:", error);
+        console.error("Error fetching profile:", JSON.stringify(error));
     }
 
     if (!profile) return null;
@@ -107,20 +107,22 @@ export const SupabaseService = {
     return data || [];
   },
 
-  async saveCustomer(cust: Customer): Promise<void> {
+  async saveCustomer(cust: Customer): Promise<Customer> {
     try {
       const { id, ...payload } = cust;
       const isNew = id.startsWith('cust-');
 
       if (isNew) {
-        const { error } = await supabase.from('customers').insert([payload]);
+        const { data, error } = await supabase.from('customers').insert([payload]).select().single();
         if(error) throw error;
+        return data as Customer;
       } else {
-        const { error } = await supabase.from('customers').update(payload).eq('id', id);
+        const { data, error } = await supabase.from('customers').update(payload).eq('id', id).select().single();
         if(error) throw error;
+        return data as Customer;
       }
     } catch (err) {
-       console.error("Failed to save customer:", err);
+       console.error("Failed to save customer:", JSON.stringify(err));
        alert("Gagal menyimpan pelanggan.");
        throw err;
     }
@@ -282,7 +284,7 @@ export const SupabaseService = {
       };
 
     } catch (err) {
-      console.error("Failed to save order:", err);
+      console.error("Failed to save order:", JSON.stringify(err));
       alert("Gagal menyimpan pesanan. Cek koneksi atau data input.");
       throw err;
     }

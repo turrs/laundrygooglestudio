@@ -30,7 +30,8 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // FIX: Initialize trackingId immediately from URL to prevent Auth screen flash
-  const [trackingId, setTrackingId] = useState<string | null>(() => {
+  // Removed unused setTrackingId
+  const [trackingId] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('trackingId');
   });

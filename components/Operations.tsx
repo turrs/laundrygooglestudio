@@ -260,16 +260,21 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
         email: '',
         address: ''
       };
-      await SupabaseService.saveCustomer(newCust);
-      setCustomers(prev => [newCust, ...prev]); // Add to top
       
-      // Auto select the new customer
-      setNewOrderCustId(newCust.id);
-      setCustSearchTerm(newCust.name);
+      try {
+        const savedCust = await SupabaseService.saveCustomer(newCust);
+        setCustomers(prev => [savedCust, ...prev]); // Add to top with REAL UUID
       
-      setIsNewCustModalOpen(false);
-      setNewCustName('');
-      setNewCustPhone('');
+        // Auto select the new customer with REAL UUID
+        setNewOrderCustId(savedCust.id);
+        setCustSearchTerm(savedCust.name);
+        
+        setIsNewCustModalOpen(false);
+        setNewCustName('');
+        setNewCustPhone('');
+      } catch (err) {
+        console.error("Failed to add quick customer", err);
+      }
     }
   };
 
