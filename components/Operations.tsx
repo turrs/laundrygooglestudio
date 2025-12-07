@@ -418,7 +418,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
   const fetchInitialData = async () => {
       setLoading(true);
       const [o, s, c, l, p] = await Promise.all([
-          SupabaseService.getOrders(),
+          // Optimized: Limit to 100 recent orders for operations view to prevent lag
+          SupabaseService.getOrders({ limit: 100 }),
           SupabaseService.getServices(),
           SupabaseService.getCustomers(),
           SupabaseService.getLocations(),

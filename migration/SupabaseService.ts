@@ -151,15 +151,36 @@ export const SupabaseService = {
 
   // --- ORDERS ---
 
-  async getOrders(): Promise<Order[]> {
+  // OPTIMIZED: Added limit and date range options
+  async getOrders(options?: { limit?: number, startDate?: string, endDate?: string }): Promise<Order[]> {
     // Join with order_items
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders')
       .select(`
         *,
         items:order_items (*)
       `)
       .order('created_at', { ascending: false });
+
+    // Apply Limits (Pagination)
+    if (options?.limit) {
+        query = query.limit(options.limit);
+    }
+
+    // Apply Date Filters (for Dashboard)
+    // IMPORTANT: endDate usually needs to cover the full day, so we might need to adjust logic if just 'YYYY-MM-DD' is passed.
+    // Here we assume ISO strings or dates provided correctly.
+    if (options?.startDate) {
+        query = query.gte('created_at', options.startDate); // Start of day
+    }
+    if (options?.endDate) {
+        // Ensure we get everything up to the end of that day if a simple date string is passed
+        let end = options.endDate;
+        if (end.length === 10) end = `${end}T23:59:59`;
+        query = query.lte('created_at', end);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     if (!data) return [];
@@ -320,11 +341,23 @@ export const SupabaseService = {
 
   // --- EXPENSES ---
 
-  async getExpenses(): Promise<Expense[]> {
-    const { data, error } = await supabase
+  // OPTIMIZED: Added date range
+  async getExpenses(options?: { startDate?: string, endDate?: string }): Promise<Expense[]> {
+    let query = supabase
       .from('expenses')
       .select('*')
       .order('date', { ascending: false });
+
+    if (options?.startDate) {
+        query = query.gte('date', options.startDate);
+    }
+    if (options?.endDate) {
+        let end = options.endDate;
+        if (end.length === 10) end = `${end}T23:59:59`;
+        query = query.lte('date', end);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     if (!data) return [];

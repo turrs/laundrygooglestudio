@@ -134,6 +134,21 @@ create policy "Enable read for tracking" on public.order_items for select to ano
 
 -- Expenses
 create policy "Enable all for authenticated" on public.expenses for all to authenticated using (true) with check (true);
+
+-- 5. PERFORMANCE INDEXES (CRITICAL FOR SPEED)
+-- These indexes speed up filtering by foreign keys and dates significantly.
+CREATE INDEX idx_orders_customer_id ON public.orders(customer_id);
+CREATE INDEX idx_orders_location_id ON public.orders(location_id);
+CREATE INDEX idx_orders_created_at ON public.orders(created_at DESC);
+CREATE INDEX idx_orders_status ON public.orders(status);
+
+CREATE INDEX idx_order_items_order_id ON public.order_items(order_id);
+
+CREATE INDEX idx_expenses_date ON public.expenses(date DESC);
+CREATE INDEX idx_expenses_location_id ON public.expenses(location_id);
+
+CREATE INDEX idx_customers_phone ON public.customers(phone);
+CREATE INDEX idx_customers_name ON public.customers(name);
 `;
 
 export const SupabaseSchema = () => {
@@ -150,7 +165,7 @@ export const SupabaseSchema = () => {
       <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
         <div>
             <h3 className="text-xl font-bold text-red-400">PENTING: Reset Database Schema</h3>
-            <p className="text-slate-400 text-sm">Update Skema Database diperlukan (Kolom Approval). <br/>Copy kode di bawah, lalu paste & jalankan di <strong>Supabase SQL Editor</strong>.</p>
+            <p className="text-slate-400 text-sm">Update Skema Database diperlukan (Kolom Approval & Performance Index). <br/>Copy kode di bawah, lalu paste & jalankan di <strong>Supabase SQL Editor</strong>.</p>
         </div>
         <button 
           onClick={handleCopy}

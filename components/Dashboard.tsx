@@ -20,7 +20,6 @@ export const AnalyticsDashboard: React.FC = () => {
   });
 
   // Processed Data
-  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [filteredExpensesAmount, setFilteredExpensesAmount] = useState(0);
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [statusData, setStatusData] = useState<any[]>([]);
@@ -29,25 +28,23 @@ export const AnalyticsDashboard: React.FC = () => {
   
   const [loadingData, setLoadingData] = useState(true);
 
+  // Fetch data whenever date range changes
   useEffect(() => {
     fetchData();
-  }, []);
-
-  // Re-run filter when dates or raw data change
-  useEffect(() => {
-    if (!loadingData) {
-        applyFilters();
-    }
-  }, [startDate, endDate, rawOrders, rawExpenses, loadingData]);
+  }, [startDate, endDate]);
 
   const fetchData = async () => {
+    setLoadingData(true);
     try {
+        // Optimized: Only fetch orders and expenses within the selected date range
         const [ordersData, expensesData] = await Promise.all([
-          SupabaseService.getOrders(),
-          SupabaseService.getExpenses()
+          SupabaseService.getOrders({ startDate, endDate }),
+          SupabaseService.getExpenses({ startDate, endDate })
         ]);
+        
         setRawOrders(ordersData);
         setRawExpenses(expensesData);
+        processMetrics(ordersData, expensesData);
     } catch (err) {
         console.error("Failed to fetch dashboard data", err);
     } finally {
@@ -88,30 +85,24 @@ export const AnalyticsDashboard: React.FC = () => {
     let currentDate = new Date(startStr);
     const stopDate = new Date(endStr);
     
-    while (currentDate <= stopDate) {
+    // Safety check to prevent infinite loop if dates are huge
+    const MAX_DAYS = 366; 
+    let count = 0;
+
+    while (currentDate <= stopDate && count < MAX_DAYS) {
         dateArray.push(currentDate.toISOString().split('T')[0]);
         currentDate.setDate(currentDate.getDate() + 1);
+        count++;
     }
     return dateArray;
   };
 
-  const applyFilters = () => {
-    // 1. Filter Orders
-    const filteredO = rawOrders.filter(o => {
-        const d = o.createdAt.split('T')[0];
-        return d >= startDate && d <= endDate;
-    });
-    setFilteredOrders(filteredO);
-
-    // 2. Filter Expenses
-    const filteredE = rawExpenses.filter(e => {
-        const d = e.date.split('T')[0];
-        return d >= startDate && d <= endDate;
-    });
-    const totalExp = filteredE.reduce((sum, e) => sum + e.amount, 0);
+  const processMetrics = (orders: Order[], expenses: Expense[]) => {
+    // 1. Calculate Expenses Total
+    const totalExp = expenses.reduce((sum, e) => sum + e.amount, 0);
     setFilteredExpensesAmount(totalExp);
 
-    // 3. Prepare Revenue Chart Data (Daily)
+    // 2. Prepare Revenue Chart Data (Daily)
     const dateRange = getDatesInRange(startDate, endDate);
     const revenueMap: Record<string, number> = {};
     
@@ -119,7 +110,7 @@ export const AnalyticsDashboard: React.FC = () => {
     dateRange.forEach(date => revenueMap[date] = 0);
 
     // Fill with data
-    filteredO.forEach(o => {
+    orders.forEach(o => {
         const d = o.createdAt.split('T')[0];
         if (revenueMap[d] !== undefined) {
             revenueMap[d] += o.totalAmount;
@@ -131,22 +122,19 @@ export const AnalyticsDashboard: React.FC = () => {
         originalDate: date,
         amount: revenueMap[date]
     }));
-    
-    // If range is too large (e.g. > 31 days), maybe group? 
-    // For now, simple daily view is fine, recharts handles many points reasonably well.
     setRevenueData(chartData);
 
-    // 4. Status Counts
+    // 3. Status Counts
     const statusCounts = Object.values(OrderStatus).map(status => ({
         name: status,
-        count: filteredO.filter(o => o.status === status).length
+        count: orders.filter(o => o.status === status).length
     }));
     setStatusData(statusCounts);
 
-    // 5. Staff Performance
+    // 4. Staff Performance
     const staffStats: Record<string, { count: number, revenue: number, ratings: number[], totalRating: number }> = {};
     
-    filteredO.forEach(o => {
+    orders.forEach(o => {
       if (o.completedBy) {
         if (!staffStats[o.completedBy]) {
             staffStats[o.completedBy] = { count: 0, revenue: 0, ratings: [], totalRating: 0 };
@@ -179,14 +167,14 @@ export const AnalyticsDashboard: React.FC = () => {
     setStaffDetails(staffList);
   };
 
-  const totalRevenue = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const totalRevenue = rawOrders.reduce((sum, o) => sum + o.totalAmount, 0);
   const netProfit = totalRevenue - filteredExpensesAmount;
-  const ratedOrders = filteredOrders.filter(o => o.rating && o.rating > 0);
+  const ratedOrders = rawOrders.filter(o => o.rating && o.rating > 0);
   const avgRating = ratedOrders.length > 0 
     ? (ratedOrders.reduce((sum, o) => sum + (o.rating || 0), 0) / ratedOrders.length).toFixed(1)
     : 'N/A';
 
-  if (loadingData) {
+  if (loadingData && rawOrders.length === 0) {
       return <div className="p-8 text-center text-slate-500">Loading dashboard data...</div>;
   }
 
