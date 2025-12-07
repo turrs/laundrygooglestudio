@@ -2,22 +2,32 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight } from 'lucide-react';
+import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users } from 'lucide-react';
 
 // --- CUSTOMERS ---
-export const CustomerManagement: React.FC = () => {
+
+interface CustomerManagementProps {
+  currentUser?: User;
+}
+
+export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentUser }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Customer>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Broadcast State
+  const [viewMode, setViewMode] = useState<'DATA' | 'BROADCAST'>('DATA');
+  const [selectedCustIds, setSelectedCustIds] = useState<Set<string>>(new Set());
+  const [broadcastTemplate, setBroadcastTemplate] = useState("Halo {name}, kami ada promo menarik bulan ini!");
+  const [broadcastQueue, setBroadcastQueue] = useState<{customer: Customer, status: 'PENDING' | 'SENT'}[]>([]);
+
   useEffect(() => {
     fetchCustomers();
   }, [isEditing]);
 
   const fetchCustomers = async () => {
-      // Avoid spinner if we already have data and are just refreshing
       if (customers.length === 0) setLoading(true);
       const data = await SupabaseService.getCustomers();
       setCustomers(data);
@@ -38,6 +48,50 @@ export const CustomerManagement: React.FC = () => {
     setFormData({});
   };
 
+  // Broadcast Helpers
+  const toggleSelectCustomer = (id: string) => {
+      const newSet = new Set(selectedCustIds);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      setSelectedCustIds(newSet);
+  };
+
+  const selectAllFiltered = () => {
+      const newSet = new Set(selectedCustIds);
+      filteredCustomers.forEach(c => newSet.add(c.id));
+      setSelectedCustIds(newSet);
+  };
+
+  const clearSelection = () => setSelectedCustIds(new Set());
+
+  const generateQueue = () => {
+      if (selectedCustIds.size === 0) return;
+      const queue = customers
+        .filter(c => selectedCustIds.has(c.id))
+        .map(c => ({ customer: c, status: 'PENDING' as const }));
+      setBroadcastQueue(queue);
+  };
+
+  const sendBroadcastItem = (index: number) => {
+      const item = broadcastQueue[index];
+      if (!item) return;
+
+      const msg = broadcastTemplate
+        .replace(/{name}/g, item.customer.name)
+        .replace(/{phone}/g, item.customer.phone);
+      
+      let formatted = item.customer.phone.replace(/\D/g, '');
+      if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
+      if (!formatted.startsWith('62')) formatted = '62' + formatted;
+
+      window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(msg)}`, '_blank');
+
+      // Update status locally
+      const newQueue = [...broadcastQueue];
+      newQueue[index].status = 'SENT';
+      setBroadcastQueue(newQueue);
+  };
+
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.phone.includes(searchTerm)
@@ -46,86 +100,249 @@ export const CustomerManagement: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in pb-20 md:pb-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-2xl font-bold text-slate-800">Pelanggan</h2>
+        <div>
+            <h2 className="text-2xl font-bold text-slate-800">Pelanggan</h2>
+            {viewMode === 'BROADCAST' && <p className="text-sm text-slate-500">Kirim pesan massal ke pelanggan</p>}
+        </div>
+        
         <div className="flex gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                <input 
-                    type="text" 
-                    placeholder="Cari nama atau telepon..." 
-                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                />
-            </div>
-            <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm">
-            <Plus size={18} /> Tambah
-            </button>
-        </div>
-      </div>
-
-      {isEditing && (
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 relative z-10">
-           <h3 className="text-lg font-bold mb-4">{formData.id ? 'Edit Pelanggan' : 'Pelanggan Baru'}</h3>
-           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
-                  <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-              </div>
-              <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">No. Telepon (WhatsApp)</label>
-                  <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} required />
-              </div>
-              <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Email (Opsional)</label>
-                  <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} />
-              </div>
-              <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Alamat</label>
-                  <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
-              </div>
-              <div className="col-span-1 md:col-span-2 flex gap-3 mt-4 justify-end">
-                 <button type="button" onClick={() => setIsEditing(false)} className="px-5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Batal</button>
-                 <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md">Simpan</button>
-              </div>
-           </form>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        {loading ? <div className="p-8 text-center text-slate-500"><Loader2 className="animate-spin inline mr-2" /> Loading Customers...</div> : (
-        <table className="w-full text-left">
-           <thead className="bg-slate-50 text-slate-500 font-semibold text-sm uppercase tracking-wider">
-             <tr>
-               <th className="p-4">Nama</th>
-               <th className="p-4">Kontak</th>
-               <th className="p-4">Alamat</th>
-               <th className="p-4 text-right">Aksi</th>
-             </tr>
-           </thead>
-           <tbody className="divide-y divide-slate-100">
-             {filteredCustomers.map(c => (
-               <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                 <td className="p-4 font-medium text-slate-800">{c.name}</td>
-                 <td className="p-4 text-slate-600 text-sm">
-                   <div className="flex items-center gap-1"><Phone size={12}/> {c.phone}</div>
-                   {c.email && <div className="text-slate-400 text-xs">{c.email}</div>}
-                 </td>
-                 <td className="p-4 text-slate-600 text-sm">{c.address || '-'}</td>
-                 <td className="p-4 text-right">
-                   <button onClick={() => { setFormData(c); setIsEditing(true); }} className="text-blue-600 text-sm font-medium hover:underline">Edit</button>
-                 </td>
-               </tr>
-             ))}
-             {filteredCustomers.length === 0 && (
-                <tr>
-                    <td colSpan={4} className="p-8 text-center text-slate-400">Tidak ada pelanggan ditemukan.</td>
-                </tr>
+             {/* View Switcher for Owner */}
+             {currentUser?.role === UserRole.OWNER && (
+                <div className="bg-slate-100 p-1 rounded-lg flex mr-2">
+                    <button 
+                        onClick={() => setViewMode('DATA')} 
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${viewMode === 'DATA' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+                    >
+                        <List size={16} className="inline mr-1"/> Data
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('BROADCAST')} 
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${viewMode === 'BROADCAST' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+                    >
+                        <Send size={16} className="inline mr-1"/> Broadcast
+                    </button>
+                </div>
              )}
-           </tbody>
-        </table>
-        )}
+
+             {viewMode === 'DATA' && (
+                <>
+                <div className="relative flex-1 md:w-64">
+                    <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                    <input 
+                        type="text" 
+                        placeholder="Cari nama atau telepon..." 
+                        className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm">
+                <Plus size={18} /> Tambah
+                </button>
+                </>
+             )}
+        </div>
       </div>
+
+      {viewMode === 'BROADCAST' ? (
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: Selection & Template */}
+            <div className="space-y-6">
+                 {/* Step 1: Select */}
+                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><CheckSquareIcon size={18} className="text-blue-500"/> 1. Pilih Penerima</h3>
+                    
+                    <div className="flex justify-between items-center mb-2">
+                        <div className="relative flex-1 mr-4">
+                            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                            <input 
+                                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none"
+                                placeholder="Filter list..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex gap-2 text-xs">
+                             <button onClick={selectAllFiltered} className="text-blue-600 font-medium hover:underline">Pilih Semua ({filteredCustomers.length})</button>
+                             <span className="text-slate-300">|</span>
+                             <button onClick={clearSelection} className="text-red-500 hover:underline">Reset</button>
+                        </div>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-lg">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 sticky top-0">
+                                <tr>
+                                    <th className="p-3 w-10">
+                                        <input type="checkbox" disabled />
+                                    </th>
+                                    <th className="p-3 font-medium text-slate-500">Nama Pelanggan</th>
+                                    <th className="p-3 font-medium text-slate-500">Nomor HP</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredCustomers.map(c => (
+                                    <tr key={c.id} className={`hover:bg-blue-50 cursor-pointer ${selectedCustIds.has(c.id) ? 'bg-blue-50' : ''}`} onClick={() => toggleSelectCustomer(c.id)}>
+                                        <td className="p-3">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedCustIds.has(c.id)} 
+                                                onChange={() => {}}
+                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                            />
+                                        </td>
+                                        <td className="p-3 font-medium text-slate-700">{c.name}</td>
+                                        <td className="p-3 text-slate-500">{c.phone}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p className="text-right text-xs text-slate-500 mt-2">{selectedCustIds.size} penerima dipilih.</p>
+                 </div>
+
+                 {/* Step 2: Compose */}
+                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageCircle size={18} className="text-green-500"/> 2. Tulis Pesan</h3>
+                    <div className="mb-2 flex gap-2">
+                        <button onClick={() => setBroadcastTemplate(prev => prev + " {name}")} className="bg-slate-100 hover:bg-slate-200 text-xs px-2 py-1 rounded border border-slate-300 transition">+ Nama</button>
+                    </div>
+                    <textarea 
+                        className="w-full border border-slate-300 rounded-lg p-3 h-32 outline-none focus:ring-2 focus:ring-green-500"
+                        placeholder="Ketik pesan broadcast disini..."
+                        value={broadcastTemplate}
+                        onChange={e => setBroadcastTemplate(e.target.value)}
+                    />
+                    <div className="bg-green-50 p-3 rounded-lg mt-3 text-xs text-green-800 border border-green-100">
+                        <strong>Preview:</strong> {broadcastTemplate.replace('{name}', 'Budi Santoso').replace('{phone}', '0812345')}
+                    </div>
+                    
+                    <button 
+                        onClick={generateQueue}
+                        disabled={selectedCustIds.size === 0 || !broadcastTemplate}
+                        className="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition"
+                    >
+                        Buat Antrean Pengiriman
+                    </button>
+                 </div>
+            </div>
+
+            {/* Right: Queue & Action */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[600px]">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Send size={18} className="text-orange-500"/> 3. Antrean Pengiriman</h3>
+                
+                {broadcastQueue.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
+                        <Users size={48} className="mb-3 opacity-20"/>
+                        <p>Belum ada antrean.</p>
+                        <p className="text-xs">Pilih penerima & buat template dulu.</p>
+                    </div>
+                ) : (
+                    <>
+                    <div className="bg-orange-50 p-4 rounded-lg mb-4 text-xs text-orange-800 border border-orange-100">
+                        <p className="font-bold mb-1">Penting:</p>
+                        <p>Untuk menghindari pemblokiran WhatsApp (Anti-Spam), klik tombol "Kirim" satu per satu. Jangan mengirim terlalu cepat.</p>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                        {broadcastQueue.map((item, idx) => (
+                            <div key={idx} className={`p-3 rounded-lg border flex justify-between items-center transition-all ${item.status === 'SENT' ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-blue-300'}`}>
+                                <div>
+                                    <p className={`font-medium ${item.status === 'SENT' ? 'text-green-700' : 'text-slate-700'}`}>{item.customer.name}</p>
+                                    <p className="text-xs text-slate-500">{item.customer.phone}</p>
+                                </div>
+                                
+                                {item.status === 'SENT' ? (
+                                    <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-white px-2 py-1 rounded border border-green-200">
+                                        <CheckCircle size={14} /> Terkirim
+                                    </span>
+                                ) : (
+                                    <button 
+                                        onClick={() => sendBroadcastItem(idx)}
+                                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1"
+                                    >
+                                        <Send size={14} /> Kirim
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div className="pt-4 border-t border-slate-100 mt-2 flex justify-between items-center text-sm text-slate-500">
+                        <span>Progress: {broadcastQueue.filter(i => i.status === 'SENT').length} / {broadcastQueue.length}</span>
+                        <button onClick={() => setBroadcastQueue([])} className="text-red-500 hover:underline">Hapus Antrean</button>
+                    </div>
+                    </>
+                )}
+            </div>
+         </div>
+      ) : (
+        /* DATA VIEW (Existing) */
+        <>
+        {isEditing && (
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 relative z-10 mb-6">
+            <h3 className="text-lg font-bold mb-4">{formData.id ? 'Edit Pelanggan' : 'Pelanggan Baru'}</h3>
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
+                    <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">No. Telepon (WhatsApp)</label>
+                    <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} required />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Email (Opsional)</label>
+                    <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Alamat</label>
+                    <input className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
+                </div>
+                <div className="col-span-1 md:col-span-2 flex gap-3 mt-4 justify-end">
+                    <button type="button" onClick={() => setIsEditing(false)} className="px-5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Batal</button>
+                    <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md">Simpan</button>
+                </div>
+            </form>
+            </div>
+        )}
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            {loading ? <div className="p-8 text-center text-slate-500"><Loader2 className="animate-spin inline mr-2" /> Loading Customers...</div> : (
+            <table className="w-full text-left">
+            <thead className="bg-slate-50 text-slate-500 font-semibold text-sm uppercase tracking-wider">
+                <tr>
+                <th className="p-4">Nama</th>
+                <th className="p-4">Kontak</th>
+                <th className="p-4">Alamat</th>
+                <th className="p-4 text-right">Aksi</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+                {filteredCustomers.map(c => (
+                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4 font-medium text-slate-800">{c.name}</td>
+                    <td className="p-4 text-slate-600 text-sm">
+                    <div className="flex items-center gap-1"><Phone size={12}/> {c.phone}</div>
+                    {c.email && <div className="text-slate-400 text-xs">{c.email}</div>}
+                    </td>
+                    <td className="p-4 text-slate-600 text-sm">{c.address || '-'}</td>
+                    <td className="p-4 text-right">
+                    <button onClick={() => { setFormData(c); setIsEditing(true); }} className="text-blue-600 text-sm font-medium hover:underline">Edit</button>
+                    </td>
+                </tr>
+                ))}
+                {filteredCustomers.length === 0 && (
+                    <tr>
+                        <td colSpan={4} className="p-8 text-center text-slate-400">Tidak ada pelanggan ditemukan.</td>
+                    </tr>
+                )}
+            </tbody>
+            </table>
+            )}
+        </div>
+        </>
+      )}
     </div>
   );
 };

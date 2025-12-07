@@ -251,7 +251,7 @@ const App: React.FC = () => {
            {activeTab === 'SERVICES' && user.role === UserRole.OWNER && <ServiceConfiguration />}
            {activeTab === 'ORDERS' && <OrderManagement currentUser={user} />}
            {activeTab === 'EXPENSES' && <ExpenseManagement currentUser={user} />}
-           {activeTab === 'CUSTOMERS' && <CustomerManagement />}
+           {activeTab === 'CUSTOMERS' && <CustomerManagement currentUser={user} />}
         </main>
       </div>
     </div>
