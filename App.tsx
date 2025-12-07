@@ -29,26 +29,26 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('DASHBOARD');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // FIX: Initialize trackingId immediately from URL to prevent Auth screen flash
-  // Removed unused setTrackingId
+  // FIX: Initialize trackingId immediately from URL
   const [trackingId] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('trackingId');
   });
   
-  const [isLoading, setIsLoading] = useState(true);
+  // OPTIMIZATION: If trackingId is present, start with isLoading = false.
+  // This ensures the public Tracking Page renders immediately and isn't blocked 
+  // by the authentication check (initSession), which might hang or be slow.
+  const [isLoading, setIsLoading] = useState(!trackingId);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      setIsLoading(false);
+      // If config missing, stop loading to show config screen (unless tracking, which might be public but needs config too)
+      if (isLoading) setIsLoading(false);
       return;
     }
 
     const initSession = async () => {
       try {
-        // If we are in tracking mode, we can skip session checks primarily, 
-        // but we still run it in case an Owner is clicking a tracking link.
-        
         // 1. Check Local Storage Session
         const { data: { session } } = await (supabase.auth as any).getSession();
 
@@ -72,7 +72,11 @@ const App: React.FC = () => {
         console.error("Session initialization failed:", error);
         setUser(null);
       } finally {
-        setIsLoading(false);
+        // Only trigger re-render if we were actually loading (i.e. not in tracking mode)
+        // This prevents double-rendering on tracking page
+        if (!trackingId) {
+            setIsLoading(false);
+        }
       }
     };
 
@@ -80,6 +84,7 @@ const App: React.FC = () => {
 
     const { data: authListener } = (supabase.auth as any).onAuthStateChange(async (event: string, session: any) => {
       if (event === 'SIGNED_IN' && session) {
+        // If user is already set, don't refetch profile unnecessarily to avoid race conditions
         if (!user) {
             const profile = await SupabaseService.getCurrentProfile();
             if (profile) setUser(profile);
@@ -93,7 +98,7 @@ const App: React.FC = () => {
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [trackingId]); // Depend on trackingId to ensure stability
 
   if (!isSupabaseConfigured) {
     return (
@@ -120,7 +125,8 @@ const App: React.FC = () => {
     );
   }
 
-  // Priority Render: Tracking Page overrides Auth check
+  // Priority Render: Tracking Page overrides Auth check logic
+  // Since we initialized isLoading=false for trackingId, this renders immediately.
   if (trackingId) {
     return <TrackingPage orderId={trackingId} />;
   }
