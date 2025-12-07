@@ -348,24 +348,24 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
         itemsDetails += `• ${item.serviceName} (${item.quantity} ${unit}) x ${item.price.toLocaleString('id-ID')} = Rp ${(item.price * item.quantity).toLocaleString('id-ID')}%0A`;
     });
 
-    const msg = 
-`*${laundryName}*%0A` +
-`${laundryAddr}%0A` +
-`Telp: ${laundryPhone}%0A` +
-`--------------------------------%0A` +
-`*NOTA PESANAN*%0A` +
-`No Order: #${order.id.slice(0, 8)}%0A` +
-`Tanggal: ${new Date(order.createdAt).toLocaleString('id-ID')}%0A` +
-`Pelanggan: ${customer.name}%0A` +
-`Parfum: ${order.perfume || 'Standard'}%0A` +
-`--------------------------------%0A` +
-`${itemsDetails}` +
-`--------------------------------%0A` +
-`*TOTAL: Rp ${order.totalAmount.toLocaleString('id-ID')}*%0A` +
-`--------------------------------%0A` +
-`Pantau status pesanan anda disini:%0A` +
-`${trackingLink}%0A%0A` +
-`Terima kasih telah menggunakan jasa kami!`;
+//     const msg = 
+// `*${laundryName}*%0A` +
+// `${laundryAddr}%0A` +
+// `Telp: ${laundryPhone}%0A` +
+// `--------------------------------%0A` +
+// `*NOTA PESANAN*%0A` +
+// `No Order: #${order.id.slice(0, 8)}%0A` +
+// `Tanggal: ${new Date(order.createdAt).toLocaleString('id-ID')}%0A` +
+// `Pelanggan: ${customer.name}%0A` +
+// `Parfum: ${order.perfume || 'Standard'}%0A` +
+// `--------------------------------%0A` +
+// `${itemsDetails}` +
+// `--------------------------------%0A` +
+// `*TOTAL: Rp ${order.totalAmount.toLocaleString('id-ID')}*%0A` +
+// `--------------------------------%0A` +
+// `Pantau status pesanan anda disini:%0A` +
+// `${trackingLink}%0A%0A` +
+// `Terima kasih telah menggunakan jasa kami!`;
 
     // Send
     let formatted = customer.phone.replace(/\D/g, '');
