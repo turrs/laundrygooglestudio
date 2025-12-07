@@ -36,22 +36,42 @@ const App: React.FC = () => {
     }
 
     const initSession = async () => {
-      // Check for tracking URL param first
-      const params = new URLSearchParams(window.location.search);
-      const tid = params.get('trackingId');
-      if (tid) {
-        setTrackingId(tid);
-        setIsLoading(false);
-        return;
-      }
+      try {
+        // 1. Check for tracking URL param first
+        const params = new URLSearchParams(window.location.search);
+        const tid = params.get('trackingId');
+        if (tid) {
+          setTrackingId(tid);
+          return; // Stop here, loading will be handled in finally
+        }
 
-      // Check Supabase Session
-      const profile = await SupabaseService.getCurrentProfile();
-      if (profile) {
-        setUser(profile);
-        setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+        // 2. Check Local Storage Session first (Fast & Synchronous-like)
+        // This prevents waiting for a network timeout if the user isn't logged in.
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+           // No local session, stop loading immediately
+           setUser(null);
+           return;
+        }
+
+        // 3. If session exists, verify with server and get Profile
+        const profile = await SupabaseService.getCurrentProfile();
+        if (profile) {
+          setUser(profile);
+          setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+        } else {
+          // Session exists but no profile? Might be a mismatch, clear it.
+          // await supabase.auth.signOut(); 
+          setUser(null);
+        }
+      } catch (error) {
+        console.error("Session initialization failed:", error);
+        setUser(null);
+      } finally {
+        // 4. CRITICAL: Always turn off loading, even if errors occur
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     initSession();
@@ -59,10 +79,12 @@ const App: React.FC = () => {
     // Listen for auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
+        // Only fetch profile if we don't have it (avoid redundant fetches)
         const profile = await SupabaseService.getCurrentProfile();
         if (profile) setUser(profile);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setActiveTab('DASHBOARD'); // Reset tab
       }
     });
 
@@ -114,8 +136,13 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+    setIsLoading(true); // Show loader during logout
+    try {
+        await supabase.auth.signOut();
+        setUser(null);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   if (!user) {

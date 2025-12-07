@@ -165,7 +165,7 @@ export const SupabaseService = {
     }));
   },
 
-  async saveOrder(ord: Order): Promise<void> {
+  async saveOrder(ord: Order): Promise<Order> {
     try {
       const isNew = ord.id.startsWith('ord-');
       
@@ -185,8 +185,10 @@ export const SupabaseService = {
       };
 
       let orderId = ord.id;
+      let savedOrderData: any = null;
 
       if (isNew) {
+        // Insert new order and get the REAL UUID
         const { data, error } = await supabase
           .from('orders')
           .insert([{ ...orderPayload, created_at: new Date().toISOString() }])
@@ -194,6 +196,7 @@ export const SupabaseService = {
           .single();
         
         if (error) throw error;
+        savedOrderData = data;
         orderId = data.id;
 
         // Insert Items
@@ -210,9 +213,35 @@ export const SupabaseService = {
 
       } else {
         // Update Order
-        const { error } = await supabase.from('orders').update(orderPayload).eq('id', orderId);
+        const { data, error } = await supabase
+            .from('orders')
+            .update(orderPayload)
+            .eq('id', orderId)
+            .select()
+            .single();
+            
         if(error) throw error;
+        savedOrderData = data;
       }
+
+      // Return the full Order object to update local state
+      return {
+        id: orderId,
+        customerId: savedOrderData.customer_id,
+        customerName: savedOrderData.customer_name,
+        locationId: savedOrderData.location_id,
+        totalAmount: savedOrderData.total_amount,
+        status: savedOrderData.status,
+        createdAt: savedOrderData.created_at,
+        updatedAt: savedOrderData.updated_at,
+        perfume: savedOrderData.perfume,
+        receivedBy: savedOrderData.received_by,
+        completedBy: savedOrderData.completed_by,
+        rating: savedOrderData.rating,
+        review: savedOrderData.review,
+        items: ord.items // Items are usually static or we assume they saved correctly
+      };
+
     } catch (err) {
       console.error("Failed to save order:", err);
       alert("Gagal menyimpan pesanan. Cek koneksi atau data input.");
