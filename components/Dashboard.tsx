@@ -1,21 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { SupabaseService } from '../migration/SupabaseService';
-import { Order, OrderStatus } from '../types';
-import { TrendingUp, DollarSign, Star, MessageSquare, Briefcase, UserCheck, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Order, OrderStatus, Expense } from '../types';
+import { TrendingUp, DollarSign, Star, MessageSquare, Briefcase, UserCheck, Wallet, ArrowUpRight, ArrowDownRight, Calendar, Filter } from 'lucide-react';
 
 export const AnalyticsDashboard: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [expensesAmount, setExpensesAmount] = useState(0);
+  // Raw Data
+  const [rawOrders, setRawOrders] = useState<Order[]>([]);
+  const [rawExpenses, setRawExpenses] = useState<Expense[]>([]);
+  
+  // Filter State
+  const [startDate, setStartDate] = useState(() => {
+    const date = new Date();
+    return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0]; // Start of current month
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const date = new Date();
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0]; // End of current month
+  });
+
+  // Processed Data
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
+  const [filteredExpensesAmount, setFilteredExpensesAmount] = useState(0);
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [statusData, setStatusData] = useState<any[]>([]);
   const [staffData, setStaffData] = useState<any[]>([]);
   const [staffDetails, setStaffDetails] = useState<any[]>([]);
+  
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Re-run filter when dates or raw data change
+  useEffect(() => {
+    if (!loadingData) {
+        applyFilters();
+    }
+  }, [startDate, endDate, rawOrders, rawExpenses, loadingData]);
 
   const fetchData = async () => {
     try {
@@ -23,9 +46,8 @@ export const AnalyticsDashboard: React.FC = () => {
           SupabaseService.getOrders(),
           SupabaseService.getExpenses()
         ]);
-        setOrders(ordersData);
-        setExpensesAmount(expensesData.reduce((sum, e) => sum + e.amount, 0));
-        processData(ordersData);
+        setRawOrders(ordersData);
+        setRawExpenses(expensesData);
     } catch (err) {
         console.error("Failed to fetch dashboard data", err);
     } finally {
@@ -33,33 +55,98 @@ export const AnalyticsDashboard: React.FC = () => {
     }
   };
 
-  const processData = (data: Order[]) => {
-    // 1. Revenue per day (Last 7 days)
-    const last7Days = Array.from({length: 7}, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        return d.toISOString().split('T')[0];
-    }).reverse();
+  const setQuickFilter = (type: 'TODAY' | 'WEEK' | 'MONTH' | 'LAST_MONTH') => {
+      const now = new Date();
+      let start = '';
+      let end = '';
 
-    const revenue = last7Days.map(date => {
-        const dayTotal = data
-            .filter(o => o.createdAt.startsWith(date))
-            .reduce((sum, o) => sum + o.totalAmount, 0);
-        return { date, amount: dayTotal };
+      switch (type) {
+          case 'TODAY':
+              start = end = now.toISOString().split('T')[0];
+              break;
+          case 'WEEK':
+              const weekAgo = new Date(now);
+              weekAgo.setDate(now.getDate() - 6);
+              start = weekAgo.toISOString().split('T')[0];
+              end = now.toISOString().split('T')[0];
+              break;
+          case 'MONTH':
+              start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+              end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+              break;
+          case 'LAST_MONTH':
+              start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+              end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+              break;
+      }
+      setStartDate(start);
+      setEndDate(end);
+  };
+
+  const getDatesInRange = (startStr: string, endStr: string) => {
+    const dateArray = [];
+    let currentDate = new Date(startStr);
+    const stopDate = new Date(endStr);
+    
+    while (currentDate <= stopDate) {
+        dateArray.push(currentDate.toISOString().split('T')[0]);
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return dateArray;
+  };
+
+  const applyFilters = () => {
+    // 1. Filter Orders
+    const filteredO = rawOrders.filter(o => {
+        const d = o.createdAt.split('T')[0];
+        return d >= startDate && d <= endDate;
     });
-    setRevenueData(revenue);
+    setFilteredOrders(filteredO);
 
-    // 2. Status counts
+    // 2. Filter Expenses
+    const filteredE = rawExpenses.filter(e => {
+        const d = e.date.split('T')[0];
+        return d >= startDate && d <= endDate;
+    });
+    const totalExp = filteredE.reduce((sum, e) => sum + e.amount, 0);
+    setFilteredExpensesAmount(totalExp);
+
+    // 3. Prepare Revenue Chart Data (Daily)
+    const dateRange = getDatesInRange(startDate, endDate);
+    const revenueMap: Record<string, number> = {};
+    
+    // Init map with 0
+    dateRange.forEach(date => revenueMap[date] = 0);
+
+    // Fill with data
+    filteredO.forEach(o => {
+        const d = o.createdAt.split('T')[0];
+        if (revenueMap[d] !== undefined) {
+            revenueMap[d] += o.totalAmount;
+        }
+    });
+
+    const chartData = dateRange.map(date => ({
+        date: new Date(date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }),
+        originalDate: date,
+        amount: revenueMap[date]
+    }));
+    
+    // If range is too large (e.g. > 31 days), maybe group? 
+    // For now, simple daily view is fine, recharts handles many points reasonably well.
+    setRevenueData(chartData);
+
+    // 4. Status Counts
     const statusCounts = Object.values(OrderStatus).map(status => ({
         name: status,
-        count: data.filter(o => o.status === status).length
+        count: filteredO.filter(o => o.status === status).length
     }));
     setStatusData(statusCounts);
 
-    // 3. Staff Performance (Chart & Details)
+    // 5. Staff Performance
     const staffStats: Record<string, { count: number, revenue: number, ratings: number[], totalRating: number }> = {};
     
-    data.forEach(o => {
+    filteredO.forEach(o => {
       if (o.completedBy) {
         if (!staffStats[o.completedBy]) {
             staffStats[o.completedBy] = { count: 0, revenue: 0, ratings: [], totalRating: 0 };
@@ -73,14 +160,12 @@ export const AnalyticsDashboard: React.FC = () => {
       }
     });
 
-    // For Chart
     const staffChart = Object.keys(staffStats).map(name => ({
       name,
       completed: staffStats[name].count
     }));
     setStaffData(staffChart);
 
-    // For Detailed List
     const staffList = Object.keys(staffStats).map(name => {
         const stats = staffStats[name];
         const avgRating = stats.ratings.length > 0 ? (stats.totalRating / stats.ratings.length).toFixed(1) : '-';
@@ -90,13 +175,13 @@ export const AnalyticsDashboard: React.FC = () => {
             revenue: stats.revenue,
             avgRating
         };
-    }).sort((a, b) => b.count - a.count); // Sort by highest completed
+    }).sort((a, b) => b.count - a.count);
     setStaffDetails(staffList);
   };
 
-  const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-  const netProfit = totalRevenue - expensesAmount;
-  const ratedOrders = orders.filter(o => o.rating && o.rating > 0);
+  const totalRevenue = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const netProfit = totalRevenue - filteredExpensesAmount;
+  const ratedOrders = filteredOrders.filter(o => o.rating && o.rating > 0);
   const avgRating = ratedOrders.length > 0 
     ? (ratedOrders.reduce((sum, o) => sum + (o.rating || 0), 0) / ratedOrders.length).toFixed(1)
     : 'N/A';
@@ -106,12 +191,44 @@ export const AnalyticsDashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in pb-10">
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+    <div className="space-y-6 animate-fade-in pb-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100 gap-4">
         <div>
             <h2 className="text-2xl font-bold text-slate-800">Dashboard & Statistik</h2>
             <p className="text-slate-500 text-sm">Pantau performa bisnis laundry Anda.</p>
         </div>
+        
+        {/* Date Filter Controls */}
+        <div className="flex flex-col md:flex-row gap-3 items-end md:items-center w-full md:w-auto">
+             <div className="flex bg-slate-100 p-1 rounded-lg">
+                <button onClick={() => setQuickFilter('TODAY')} className="px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white hover:shadow-sm rounded transition">Hari Ini</button>
+                <button onClick={() => setQuickFilter('WEEK')} className="px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white hover:shadow-sm rounded transition">7 Hari</button>
+                <button onClick={() => setQuickFilter('MONTH')} className="px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white hover:shadow-sm rounded transition">Bulan Ini</button>
+                <button onClick={() => setQuickFilter('LAST_MONTH')} className="px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white hover:shadow-sm rounded transition">Bulan Lalu</button>
+             </div>
+             <div className="flex items-center gap-2 border border-slate-200 rounded-lg p-1 bg-white">
+                <Calendar size={16} className="text-slate-400 ml-2" />
+                <input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={e => setStartDate(e.target.value)}
+                    className="text-sm text-slate-600 outline-none w-32"
+                />
+                <span className="text-slate-300">-</span>
+                <input 
+                    type="date" 
+                    value={endDate} 
+                    onChange={e => setEndDate(e.target.value)}
+                    className="text-sm text-slate-600 outline-none w-32"
+                />
+             </div>
+        </div>
+      </div>
+
+      {/* Filter Info */}
+      <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
+         <Filter size={12} />
+         <span>Menampilkan data dari <strong>{new Date(startDate).toLocaleDateString('id-ID')}</strong> sampai <strong>{new Date(endDate).toLocaleDateString('id-ID')}</strong></span>
       </div>
 
       {/* Stats Cards */}
@@ -128,7 +245,7 @@ export const AnalyticsDashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500 flex items-center justify-between">
            <div>
               <p className="text-slate-500 text-xs uppercase font-bold tracking-wider">Pengeluaran</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">Rp {expensesAmount.toLocaleString('id-ID')}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">Rp {filteredExpensesAmount.toLocaleString('id-ID')}</p>
               <div className="flex items-center text-xs text-red-500 mt-1 font-medium"><ArrowDownRight size={14}/> Beban Operasional</div>
            </div>
            <div className="bg-red-100 p-3 rounded-full text-red-600"><Wallet size={24} /></div>
