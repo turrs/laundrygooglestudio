@@ -372,7 +372,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
     if (!formatted.startsWith('62')) formatted = '62' + formatted; 
     
-    const url = `https://wa.me/${formatted}?text=${msg}`; // Already encoded in template partially, but safer to construct raw and encode
+    // const url = `https://wa.me/${formatted}?text=${msg}`; // Already encoded in template partially, but safer to construct raw and encode
     // Note: The template above uses %0A which is URL encoded newline. 
     // If we use encodeURIComponent on the whole string, we should write real newlines \n.
     // Let's rewrite using standard strings and encodeURIComponent.
