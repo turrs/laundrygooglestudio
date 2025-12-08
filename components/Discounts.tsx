@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Discount, DiscountType, Order } from '../types';
+import { Discount, Order } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
-import { Plus, Trash2, Tag, Percent, DollarSign, Users, Loader2, CheckCircle, XCircle, Search, ShoppingBag } from 'lucide-react';
+import { Plus, Trash2, Tag, Percent, DollarSign, Users, Loader2, XCircle, ShoppingBag } from 'lucide-react';
 
 export const DiscountManagement: React.FC = () => {
   const [discounts, setDiscounts] = useState<Discount[]>([]);
