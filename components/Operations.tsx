@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Clock } from 'lucide-react';
+import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Clock, Download, Upload, FileText } from 'lucide-react';
 
 // --- CUSTOMERS ---
 
@@ -17,6 +17,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentU
   const [formData, setFormData] = useState<Partial<Customer>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Broadcast State
   const [viewMode, setViewMode] = useState<'DATA' | 'BROADCAST'>('DATA');
@@ -93,6 +94,98 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentU
       setBroadcastQueue(newQueue);
   };
 
+  // --- EXPORT CUSTOMERS ---
+  const handleExport = () => {
+    const headers = ['Nama', 'Telepon', 'Email', 'Alamat', 'Catatan'];
+    
+    // Map Data
+    const rows = customers.map(c => [
+        `"${c.name.replace(/"/g, '""')}"`,
+        `"${c.phone.replace(/"/g, '""')}"`,
+        `"${c.email.replace(/"/g, '""')}"`,
+        `"${c.address.replace(/"/g, '""')}"`,
+        `"${(c.notes || '').replace(/"/g, '""')}"`
+    ].join(','));
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `pelanggan_data_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- IMPORT CUSTOMERS ---
+  const handleImportClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+        const text = evt.target?.result as string;
+        if (!text) return;
+
+        // Simple CSV Parser
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        // Skip Header (Line 0)
+        const dataRows = lines.slice(1);
+        
+        let successCount = 0;
+        let failCount = 0;
+
+        setLoading(true);
+
+        for (const row of dataRows) {
+            // Split by comma, handling potential quotes roughly
+            const cols = row.split(',').map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+            
+            // Expected Format: Name, Phone, Email, Address, Notes
+            if (cols.length < 2) {
+                failCount++;
+                continue;
+            }
+
+            const [name, phone, email, address, notes] = cols;
+
+            if (!name || !phone) {
+                failCount++;
+                continue;
+            }
+
+            try {
+                await SupabaseService.saveCustomer({
+                    id: `cust-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    name,
+                    phone,
+                    email: email || '',
+                    address: address || '',
+                    notes: notes || ''
+                });
+                successCount++;
+            } catch (err) {
+                console.error("Import failed for row", row, err);
+                failCount++;
+            }
+        }
+        
+        alert(`Import Selesai.\nBerhasil: ${successCount}\nGagal: ${failCount}`);
+        setLoading(false);
+        fetchCustomers();
+        
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.phone.includes(searchTerm)
@@ -106,10 +199,10 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentU
             {viewMode === 'BROADCAST' && <p className="text-sm text-slate-500">Kirim pesan massal ke pelanggan</p>}
         </div>
         
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
              {/* View Switcher for Owner */}
              {currentUser?.role === UserRole.OWNER && (
-                <div className="bg-slate-100 p-1 rounded-lg flex mr-2">
+                <div className="bg-slate-100 p-1 rounded-lg flex mr-2 shrink-0">
                     <button 
                         onClick={() => setViewMode('DATA')} 
                         className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${viewMode === 'DATA' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
@@ -127,7 +220,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentU
 
              {viewMode === 'DATA' && (
                 <>
-                <div className="relative flex-1 md:w-64">
+                <div className="relative flex-1 md:w-64 min-w-[200px]">
                     <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
                     <input 
                         type="text" 
@@ -137,13 +230,34 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentU
                         onChange={e => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm">
-                <Plus size={18} /> Tambah
+                
+                {/* Export / Import Buttons */}
+                <input type="file" accept=".csv" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                
+                <button onClick={handleExport} className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 transition shadow-sm" title="Export CSV">
+                    <Download size={18} />
+                </button>
+                <button onClick={handleImportClick} className="bg-slate-600 text-white p-2 rounded-lg hover:bg-slate-700 transition shadow-sm" title="Import CSV">
+                    <Upload size={18} />
+                </button>
+
+                <button onClick={() => { setFormData({}); setIsEditing(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm shrink-0">
+                    <Plus size={18} /> <span className="hidden sm:inline">Tambah</span>
                 </button>
                 </>
              )}
         </div>
       </div>
+
+      {viewMode === 'DATA' && (
+         <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs flex items-start gap-2 border border-blue-100 mb-4">
+             <FileText size={14} className="mt-0.5 shrink-0"/>
+             <div>
+                <strong>Format Import (CSV):</strong> Nama, Telepon, Email, Alamat, Catatan. <br/>
+                Pastikan baris pertama adalah header.
+             </div>
+         </div>
+      )}
 
       {viewMode === 'BROADCAST' ? (
          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

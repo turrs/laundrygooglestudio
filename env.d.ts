@@ -1,5 +1,6 @@
 
-/// <reference types="vite/client" />
+// Reference removed to resolve "Cannot find type definition file for 'vite/client'"
+// /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string;
