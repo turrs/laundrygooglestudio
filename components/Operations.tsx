@@ -923,9 +923,9 @@ Terima Kasih`;
          
          try {
              await SupabaseService.deleteOrder(id);
-         } catch (e) {
+         } catch (e: any) {
              console.error("Delete failed", e);
-             alert("Gagal menghapus pesanan.");
+             alert(`Gagal menghapus pesanan. Error: ${e.message || 'Database error'}`);
              // Refresh data to revert optimistic update in case of error
              fetchInitialData();
          }

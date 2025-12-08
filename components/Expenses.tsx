@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Expense, User, Location } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
@@ -66,8 +67,12 @@ export const ExpenseManagement: React.FC<ExpenseManagementProps> = ({ currentUse
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Hapus catatan pengeluaran ini?")) {
-      await SupabaseService.deleteExpense(id);
-      fetchData();
+      try {
+        await SupabaseService.deleteExpense(id);
+        fetchData();
+      } catch (e: any) {
+        alert("Gagal menghapus pengeluaran: " + (e.message || "Unknown error"));
+      }
     }
   };
 

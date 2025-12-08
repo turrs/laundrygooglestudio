@@ -86,7 +86,8 @@ export const SupabaseService = {
   },
 
   async deleteLocation(id: string): Promise<void> {
-    await supabase.from('locations').delete().eq('id', id);
+    const { error } = await supabase.from('locations').delete().eq('id', id);
+    if (error) throw error;
   },
 
   // --- SERVICES ---
@@ -134,7 +135,8 @@ export const SupabaseService = {
   },
 
   async deleteService(id: string): Promise<void> {
-    await supabase.from('services').delete().eq('id', id);
+    const { error } = await supabase.from('services').delete().eq('id', id);
+    if (error) throw error;
   },
 
   // --- CUSTOMERS ---
@@ -358,6 +360,12 @@ export const SupabaseService = {
   },
 
   async deleteOrder(orderId: string): Promise<void> {
+    // 1. Manually delete order_items first
+    // This acts as a safety net if "ON DELETE CASCADE" is not configured in the database schema
+    const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', orderId);
+    if (itemsError) throw itemsError;
+
+    // 2. Delete the order
     const { error } = await supabase.from('orders').delete().eq('id', orderId);
     if (error) throw error;
   },
@@ -438,6 +446,7 @@ export const SupabaseService = {
   },
 
   async deleteExpense(id: string): Promise<void> {
-    await supabase.from('expenses').delete().eq('id', id);
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    if (error) throw error;
   }
 };

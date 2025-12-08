@@ -55,8 +55,12 @@ export const LocationManagement: React.FC<LocationManagementProps> = ({ currentU
 
   const handleDelete = async (id: string) => {
     if(window.confirm("Apakah Anda yakin ingin menghapus lokasi ini?")) {
-        await SupabaseService.deleteLocation(id);
-        fetchLocations();
+        try {
+            await SupabaseService.deleteLocation(id);
+            fetchLocations();
+        } catch (e: any) {
+            alert("Gagal menghapus lokasi: " + (e.message || "Unknown error"));
+        }
     }
   }
 
@@ -353,8 +357,12 @@ export const ServiceConfiguration: React.FC = () => {
 
   const handleDelete = async (id: string) => {
       if(window.confirm("Yakin ingin menghapus layanan ini?")) {
-          await SupabaseService.deleteService(id);
-          fetchServices();
+          try {
+            await SupabaseService.deleteService(id);
+            fetchServices();
+          } catch (e: any) {
+            alert("Gagal menghapus layanan: " + (e.message || "Unknown error"));
+          }
       }
   }
 
