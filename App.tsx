@@ -113,7 +113,7 @@ const App: React.FC = () => {
     checkSession();
 
     // Listen for changes (Sign In, Sign Out, Auto-Refresh)
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
       // Only react to specific events after initial load is done
       if (event === 'SIGNED_OUT') {
          if (mounted) {
