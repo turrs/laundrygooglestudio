@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users } from 'lucide-react';
+import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Clock } from 'lucide-react';
 
 // --- CUSTOMERS ---
 
@@ -556,14 +557,44 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     const laundryAddr = location ? location.address : '';
     const laundryPhone = location ? location.phone : '';
 
+    // --- LOGIC PERUBAHAN: Hitung Estimasi Berdasarkan Max Durasi Service di Cart ---
+    
+    // 1. Cari durasi terlama dari item yang dipesan
+    let maxDurationHours = 0;
+    order.items.forEach(item => {
+        // Find the original service object to get durationHours
+        const svc = services.find(s => s.id === item.serviceId);
+        // Default to 48 hours (2 days) if duration is missing or 0
+        const duration = svc && svc.durationHours ? svc.durationHours : 48;
+        if (duration > maxDurationHours) {
+            maxDurationHours = duration;
+        }
+    });
+    
+    // 2. Default if cart is empty or something failed: 2 days (48h)
+    if (maxDurationHours === 0) maxDurationHours = 48;
+
+    // Calculate dates
+    const dateIn = new Date(order.createdAt);
+    const dateEst = new Date(dateIn.getTime() + (maxDurationHours * 60 * 60 * 1000)); // Add millis
+    
+    const formatDate = (date: Date) => {
+      return date.toLocaleString('id-ID', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }).replace(/\./g, ':');
+    };
+
+    const formattedDateIn = formatDate(dateIn);
+    const formattedDateEst = formatDate(dateEst);
+
     // Build Item List String
     let itemsDetails = "";
     order.items.forEach(item => {
-        // Find service unit if possible, usually snapshot doesn't store unit but types.ts has unit in Service
-        // We can try to find the service in the current services list to get the unit
         const svc = services.find(s => s.id === item.serviceId);
         const unit = svc ? svc.unit : 'item/kg';
-        itemsDetails += `• ${item.serviceName} (${item.quantity} ${unit}) x ${item.price.toLocaleString('id-ID')} = Rp ${(item.price * item.quantity).toLocaleString('id-ID')}%0A`;
+        const subtotal = item.price * item.quantity;
+        itemsDetails += `- ${item.serviceName}%0A${item.quantity} ${unit} x ${item.price} = Rp ${subtotal}%0A%0A`;
     });
 
     // Send
@@ -571,24 +602,42 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1);
     if (!formatted.startsWith('62')) formatted = '62' + formatted; 
     
+    // Nota Elektronik Structure
     const cleanMsg = 
-`*${laundryName}*
+`NOTA ELEKTRONIK
+
+${laundryName}
 ${laundryAddr}
-Telp: ${laundryPhone}
---------------------------------
-*NOTA PESANAN*
-No Order: #${order.id.slice(0, 8)}
-Tanggal: ${new Date(order.createdAt).toLocaleString('id-ID')}
-Pelanggan: ${customer.name}
-Parfum: ${order.perfume || 'Standard'}
---------------------------------
-${itemsDetails.replace(/%0A/g, '\n')}--------------------------------
-*TOTAL: Rp ${order.totalAmount.toLocaleString('id-ID')}*
---------------------------------
-Pantau status pesanan anda disini:
+HP : ${laundryPhone}
+
+=======================
+No Nota :
+TRX/${order.id.slice(4)}
+
+Pelanggan :
+${customer.name}
+
+Tanggal Masuk    : 
+${formattedDateIn}
+
+Estimasi Selesai : 
+${formattedDateEst}
+
+=======================
+${itemsDetails.replace(/%0A/g, '\n')}=======================
+Parfum  : ${order.perfume || 'Standard'}
+Status   : BELUM BAYAR
+
+=======================
+subTotal  =  Rp ${order.totalAmount}
+Diskon     =  Rp 0
+Total        =  Rp ${order.totalAmount}
+
+=======================
+
 ${trackingLink}
 
-Terima kasih telah menggunakan jasa kami!`;
+Terima Kasih`;
 
     window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(cleanMsg)}`, '_blank');
   };
@@ -850,7 +899,10 @@ Terima kasih telah menggunakan jasa kami!`;
                             <Package size={20} />
                         </div>
                         <span className="font-semibold text-slate-800 text-sm">{svc.name}</span>
-                        <span className="text-xs text-slate-500">Rp {svc.price.toLocaleString('id-ID')}/{svc.unit}</span>
+                        <div className="flex flex-col text-xs mt-1 text-slate-500">
+                           <span>Rp {svc.price.toLocaleString('id-ID')}/{svc.unit}</span>
+                           <span className="text-orange-600 font-medium">Est: {svc.durationHours ? `${svc.durationHours} jam` : '2 hari'}</span>
+                        </div>
                      </div>
                    ))}
                 </div>

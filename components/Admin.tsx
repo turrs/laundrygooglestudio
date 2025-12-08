@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Location, User, Service, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { MapPin, Tag, Trash2, Plus, Edit2, Loader2, ShieldAlert, CheckCircle, XCircle } from 'lucide-react';
+import { MapPin, Tag, Trash2, Plus, Edit2, Loader2, ShieldAlert, CheckCircle, XCircle, Clock } from 'lucide-react';
 
 // --- LOCATIONS ---
 interface LocationManagementProps {
@@ -341,7 +341,8 @@ export const ServiceConfiguration: React.FC = () => {
         name: formData.name,
         price: Number(formData.price),
         unit: formData.unit || 'item',
-        description: formData.description || ''
+        description: formData.description || '',
+        durationHours: Number(formData.durationHours) || 48 // Default 48h
       });
       setIsEditing(false);
       setFormData({});
@@ -367,12 +368,14 @@ export const ServiceConfiguration: React.FC = () => {
 
       {isEditing && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <input placeholder="Nama Layanan" className="border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
             <input placeholder="Harga" type="number" step="100" className="border p-2 rounded" value={formData.price || ''} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} required />
             <input placeholder="Satuan (kg, item)" className="border p-2 rounded" value={formData.unit || ''} onChange={e => setFormData({...formData, unit: e.target.value})} required />
+            <input placeholder="Estimasi (Jam)" type="number" className="border p-2 rounded" value={formData.durationHours || ''} onChange={e => setFormData({...formData, durationHours: parseFloat(e.target.value)})} title="Lama pengerjaan dalam jam" />
             <input placeholder="Deskripsi" className="border p-2 rounded" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
-            <div className="col-span-1 md:col-span-4 flex gap-2">
+            
+            <div className="col-span-1 md:col-span-5 flex gap-2">
                 <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Simpan</button>
                 <button type="button" onClick={() => setIsEditing(false)} className="bg-slate-300 text-slate-800 px-4 py-2 rounded hover:bg-slate-400">Batal</button>
             </div>
@@ -390,6 +393,12 @@ export const ServiceConfiguration: React.FC = () => {
                         <Tag size={20} className="text-slate-400" />
                     </div>
                     <p className="text-2xl font-bold text-blue-600 mt-2">Rp {svc.price.toLocaleString('id-ID')} <span className="text-sm text-slate-500 font-normal">/ {svc.unit}</span></p>
+                    
+                    <div className="flex items-center gap-1 mt-2 text-xs text-orange-600 font-medium bg-orange-50 w-fit px-2 py-1 rounded">
+                        <Clock size={12} />
+                        Estimasi: {svc.durationHours ? `${svc.durationHours} Jam` : '2 Hari (Default)'}
+                    </div>
+
                     <p className="text-slate-500 text-sm mt-2">{svc.description}</p>
                 </div>
                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">

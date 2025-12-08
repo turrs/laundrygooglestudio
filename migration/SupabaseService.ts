@@ -94,19 +94,34 @@ export const SupabaseService = {
   async getServices(): Promise<Service[]> {
     const { data, error } = await supabase.from('services').select('*');
     if (error) throw error;
-    return data || [];
+    // Map database snake_case to camelCase
+    return data?.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        price: s.price,
+        unit: s.unit,
+        description: s.description,
+        durationHours: s.duration_hours || 48 // Default fallback 2 days
+    })) || [];
   },
 
   async saveService(svc: Service): Promise<void> {
     try {
-      const { id, ...payload } = svc;
-      const isNew = id.startsWith('svc-');
+      const isNew = svc.id.startsWith('svc-');
+      
+      const payload = {
+          name: svc.name,
+          price: svc.price,
+          unit: svc.unit,
+          description: svc.description,
+          duration_hours: svc.durationHours || 48
+      };
 
       if (isNew) {
         const { error } = await supabase.from('services').insert([payload]);
         if(error) throw error;
       } else {
-        const { error } = await supabase.from('services').update(payload).eq('id', id);
+        const { error } = await supabase.from('services').update(payload).eq('id', svc.id);
         if(error) throw error;
       }
     } catch (err) {

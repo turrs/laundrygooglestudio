@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { supabase } from '../migration/supabaseClient';
+import { SupabaseService } from '../migration/SupabaseService';
 import { Lock, User as UserIcon, Building2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface AuthProps {
@@ -28,7 +29,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const cleanPassword = password.trim();
 
     try {
-      // Cast to any to bypass type definition mismatch (v2 methods on v1 types)
       const { data, error: authError } = await (supabase.auth as any).signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
@@ -36,24 +36,15 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
       if (authError) throw authError;
 
-      // Fetch Profile
       if (data.user) {
-        // We look for a profile that matches the Auth ID or Email
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .or(`auth_id.eq.${data.user.id},id.eq.${data.user.id}`) // Check both FK and legacy PK
-          .single();
+        // Wait a small moment if this was a fresh login right after signup to ensure trigger finished
+        // (Usually instant, but network latency happens)
+        
+        // Fetch Profile
+        const profile = await SupabaseService.getCurrentProfile();
 
-        if (profileError) {
-             console.error("Profile fetch error:", JSON.stringify(profileError));
-             
-             if (profileError.code === 'PGRST116') {
-                 // PGRST116 means 0 rows found
-                 throw new Error("Login successful, but user profile is missing. Please register again to recreate your profile.");
-             }
-             
-             throw new Error(profileError.message || "Failed to retrieve user profile.");
+        if (!profile) {
+             throw new Error("Login successful, but profile not found. If you just registered, please try logging in again in a few seconds.");
         }
 
         if (profile.role !== role) {
@@ -64,22 +55,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }
 
         // --- CHECK APPROVAL ---
-        // If it's a STAFF and is_approved is false, deny login.
-        if (profile.role === UserRole.STAFF && profile.is_approved === false) {
+        if (profile.role === UserRole.STAFF && !profile.isApproved) {
            await (supabase.auth as any).signOut();
            setError("Akun Anda belum disetujui oleh Owner. Silakan hubungi Owner toko.");
            setLoading(false);
            return;
         }
 
-        onLogin({
-             id: profile.id,
-             name: profile.name,
-             email: profile.email,
-             role: profile.role as UserRole,
-             locationId: profile.location_id,
-             isApproved: profile.is_approved
-        });
+        onLogin(profile);
       }
     } catch (err: any) {
       console.error("Login Error:", err);
@@ -100,10 +83,17 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const cleanName = name.trim();
 
     try {
-      // 1. Sign Up
+      // 1. Sign Up with METADATA
+      // The Database Trigger 'handle_new_user' will read 'data' (options.data) to create the profile row.
       const { data, error: authError } = await (supabase.auth as any).signUp({
         email: cleanEmail,
         password: cleanPassword,
+        options: {
+            data: {
+                name: cleanName,
+                role: role
+            }
+        }
       });
 
       if (authError) {
@@ -114,52 +104,26 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
 
       if (data.user) {
-        // 2. Create Profile Record
-        // Logic: Owner is auto-approved, Staff needs approval.
-        const isApproved = role === UserRole.OWNER;
-        
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: data.user.id, // Keep PK as Auth ID for owners for simplicity
-              auth_id: data.user.id,
-              name: cleanName,
-              email: cleanEmail,
-              role: role,
-              is_approved: isApproved
-            }
-          ]);
-
-        if (profileError) {
-           console.error("Profile creation error:", JSON.stringify(profileError));
-           if (profileError.code !== '23505') { // 23505 is unique_violation
-              console.warn("Could not create profile, possibly already exists.");
-           }
-        }
-
         setLoading(false);
 
         // 3. Post-Registration Logic
+        const isApproved = role === UserRole.OWNER; // Logic matches DB trigger
+
         if (!isApproved) {
             // Staff flow: Show message, don't login
-            setSuccessMsg("Registrasi berhasil! Akun Anda sedang menunggu persetujuan Owner. Silakan tunggu konfirmasi.");
-            // Force logout just in case supabase session persisted
+            setSuccessMsg("Registrasi berhasil! Akun Anda sedang menunggu persetujuan Owner.");
+            // Force logout
             await (supabase.auth as any).signOut();
         } else {
-             // Owner flow: Login immediately
-             if (data.user && !data.session) {
-                setSuccessMsg("Registration successful! Please check your email to confirm your account before logging in.");
-                return;
+             // Owner flow
+             if (!data.session) {
+                // Email confirmation required case
+                setSuccessMsg("Registration successful! Please check your email to confirm your account.");
+             } else {
+                // Auto login successful, but we usually want to force a fresh login to be safe or redirect
+                setSuccessMsg("Registrasi berhasil! Silakan Login.");
+                setView('LOGIN');
              }
-
-             onLogin({
-                id: data.user.id,
-                name: cleanName,
-                email: cleanEmail,
-                role: UserRole.OWNER,
-                isApproved: true
-            });
         }
       }
     } catch (err: any) {

@@ -35,6 +35,7 @@ export interface Service {
   price: number;
   unit: string; // e.g., "kg", "item"
   description: string;
+  durationHours?: number; // Estimated duration in hours
 }
 
 export interface Customer {
