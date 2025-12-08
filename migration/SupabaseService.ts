@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { User, Location, Service, Customer, Order, OrderStatus, UserRole, Expense } from '../types';
+import { User, Location, Service, Customer, Order, OrderStatus, UserRole, Expense, PaymentMethod } from '../types';
 
 /**
  * SupabaseService
@@ -78,9 +78,9 @@ export const SupabaseService = {
         const { error } = await supabase.from('locations').update(payload).eq('id', id);
         if(error) throw error;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save location:", err);
-      alert("Gagal menyimpan lokasi. Cek console untuk detail.");
+      alert(`Gagal menyimpan lokasi: ${err.message || 'Unknown error'}`);
       throw err;
     }
   },
@@ -101,7 +101,8 @@ export const SupabaseService = {
         price: s.price,
         unit: s.unit,
         description: s.description,
-        durationHours: s.duration_hours || 48 // Default fallback 2 days
+        // Use coalescing to allow 0, fallback to 48
+        durationHours: s.duration_hours !== null ? s.duration_hours : 48
     })) || [];
   },
 
@@ -114,7 +115,8 @@ export const SupabaseService = {
           price: svc.price,
           unit: svc.unit,
           description: svc.description,
-          duration_hours: svc.durationHours || 48
+          // Use coalescing to allow 0.
+          duration_hours: svc.durationHours ?? 48
       };
 
       if (isNew) {
@@ -124,9 +126,9 @@ export const SupabaseService = {
         const { error } = await supabase.from('services').update(payload).eq('id', svc.id);
         if(error) throw error;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save service:", err);
-      alert("Gagal menyimpan layanan. Pastikan harga berupa angka.");
+      alert(`Gagal menyimpan layanan: ${err.message || 'Unknown error'}. Pastikan skema database sudah diupdate.`);
       throw err;
     }
   },
@@ -157,9 +159,9 @@ export const SupabaseService = {
         if(error) throw error;
         return data as Customer;
       }
-    } catch (err) {
-       console.error("Failed to save customer:", JSON.stringify(err));
-       alert("Gagal menyimpan pelanggan.");
+    } catch (err: any) {
+       console.error("Failed to save customer:", err);
+       alert(`Gagal menyimpan pelanggan: ${err.message || 'Unknown error'}`);
        throw err;
     }
   },
@@ -208,6 +210,8 @@ export const SupabaseService = {
       locationId: o.location_id,
       totalAmount: o.total_amount,
       status: o.status as OrderStatus,
+      isPaid: o.is_paid || false, // Map payment status
+      paymentMethod: o.payment_method as PaymentMethod, // Map payment method
       createdAt: o.created_at,
       updatedAt: o.updated_at,
       perfume: o.perfume,
@@ -247,6 +251,8 @@ export const SupabaseService = {
       locationId: data.location_id,
       totalAmount: data.total_amount,
       status: data.status as OrderStatus,
+      isPaid: data.is_paid || false,
+      paymentMethod: data.payment_method as PaymentMethod,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
       perfume: data.perfume,
@@ -274,6 +280,8 @@ export const SupabaseService = {
         location_id: ord.locationId,
         total_amount: ord.totalAmount,
         status: ord.status,
+        is_paid: ord.isPaid, // Include payment status
+        payment_method: ord.paymentMethod, // Include payment method
         perfume: ord.perfume,
         received_by: ord.receivedBy,
         completed_by: ord.completedBy,
@@ -330,6 +338,8 @@ export const SupabaseService = {
         locationId: savedOrderData.location_id,
         totalAmount: savedOrderData.total_amount,
         status: savedOrderData.status,
+        isPaid: savedOrderData.is_paid || false,
+        paymentMethod: savedOrderData.payment_method,
         createdAt: savedOrderData.created_at,
         updatedAt: savedOrderData.updated_at,
         perfume: savedOrderData.perfume,
@@ -340,11 +350,16 @@ export const SupabaseService = {
         items: ord.items // Items are usually static or we assume they saved correctly
       };
 
-    } catch (err) {
-      console.error("Failed to save order:", JSON.stringify(err));
-      alert("Gagal menyimpan pesanan. Cek koneksi atau data input.");
+    } catch (err: any) {
+      console.error("Failed to save order:", err);
+      alert(`Gagal menyimpan pesanan: ${err.message || 'Unknown error'}`);
       throw err;
     }
+  },
+
+  async deleteOrder(orderId: string): Promise<void> {
+    const { error } = await supabase.from('orders').delete().eq('id', orderId);
+    if (error) throw error;
   },
 
   async updateOrderStatus(orderId: string, status: OrderStatus, completedBy?: string): Promise<void> {
@@ -352,6 +367,14 @@ export const SupabaseService = {
     if (completedBy) payload.completed_by = completedBy;
     
     await supabase.from('orders').update(payload).eq('id', orderId);
+  },
+
+  async confirmPayment(orderId: string, method: PaymentMethod): Promise<void> {
+    await supabase.from('orders').update({ 
+        is_paid: true, 
+        payment_method: method,
+        updated_at: new Date().toISOString() 
+    }).eq('id', orderId);
   },
 
   // --- EXPENSES ---
@@ -407,8 +430,9 @@ export const SupabaseService = {
          const { error } = await supabase.from('expenses').update(payload).eq('id', exp.id);
          if(error) throw error;
        }
-     } catch (err) {
+     } catch (err: any) {
        console.error("Failed to save expense:", err);
+       alert(`Gagal menyimpan pengeluaran: ${err.message || 'Unknown error'}`);
        throw err;
      }
   },

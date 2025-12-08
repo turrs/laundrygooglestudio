@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
+import { Order, Customer, OrderStatus, Service, Location, User, UserRole, PaymentMethod } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Download, Upload, FileText } from 'lucide-react';
+import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Download, Upload, FileText, Wallet, CreditCard, Clock, Banknote, QrCode, Trash2, AlertCircle } from 'lucide-react';
 
 // --- CUSTOMERS ---
 
@@ -482,6 +482,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
   const [newOrderLocId, setNewOrderLocId] = useState('');
   const [perfume, setPerfume] = useState('Standard');
   const [receivedBy, setReceivedBy] = useState('');
+  const [isPaid, setIsPaid] = useState(false); // NEW: Payment Status State
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH'); // NEW: Method
   const [cart, setCart] = useState<{serviceId: string, quantity: number}[]>([]);
   
   // Customer Search State for New Order
@@ -499,6 +501,14 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
   const [orderToReady, setOrderToReady] = useState<Order | null>(null);
   const [completionStaff, setCompletionStaff] = useState('');
   const [sendWaNotification, setSendWaNotification] = useState(true);
+
+  // Payment Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [orderToPay, setOrderToPay] = useState<Order | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('CASH');
+
+  // Filter State
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'UNPAID' | 'PAID'>('ALL');
 
   // Success State
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
@@ -647,6 +657,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
       items: orderItems,
       perfume,
       receivedBy, 
+      isPaid, // Pass payment status
+      paymentMethod: isPaid ? paymentMethod : undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -657,6 +669,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     setCart([]);
     setNewOrderCustId('');
     setCustSearchTerm('');
+    setIsPaid(false); // Reset payment status
   };
 
   // --- Helper: Get Full WhatsApp Message with Laundry Details ---
@@ -671,26 +684,19 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
     const laundryAddr = location ? location.address : '';
     const laundryPhone = location ? location.phone : '';
 
-    // --- LOGIC PERUBAHAN: Hitung Estimasi Berdasarkan Max Durasi Service di Cart ---
-    
-    // 1. Cari durasi terlama dari item yang dipesan
+    // Calculate Estimation
     let maxDurationHours = 0;
     order.items.forEach(item => {
-        // Find the original service object to get durationHours
         const svc = services.find(s => s.id === item.serviceId);
-        // Default to 48 hours (2 days) if duration is missing or 0
         const duration = svc && svc.durationHours ? svc.durationHours : 48;
         if (duration > maxDurationHours) {
             maxDurationHours = duration;
         }
     });
-    
-    // 2. Default if cart is empty or something failed: 2 days (48h)
     if (maxDurationHours === 0) maxDurationHours = 48;
 
-    // Calculate dates
     const dateIn = new Date(order.createdAt);
-    const dateEst = new Date(dateIn.getTime() + (maxDurationHours * 60 * 60 * 1000)); // Add millis
+    const dateEst = new Date(dateIn.getTime() + (maxDurationHours * 60 * 60 * 1000));
     
     const formatDate = (date: Date) => {
       return date.toLocaleString('id-ID', {
@@ -701,6 +707,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ currentUser })
 
     const formattedDateIn = formatDate(dateIn);
     const formattedDateEst = formatDate(dateEst);
+    const paymentStatus = order.isPaid ? 'LUNAS' : 'BELUM BAYAR';
+    const methodText = order.isPaid && order.paymentMethod ? ` (${order.paymentMethod})` : '';
 
     // Build Item List String
     let itemsDetails = "";
@@ -740,12 +748,10 @@ ${formattedDateEst}
 =======================
 ${itemsDetails.replace(/%0A/g, '\n')}=======================
 Parfum  : ${order.perfume || 'Standard'}
-Status   : BELUM BAYAR
+Status  : ${paymentStatus}${methodText}
 
 =======================
-subTotal  =  Rp ${order.totalAmount}
-Diskon     =  Rp 0
-Total        =  Rp ${order.totalAmount}
+Total        =  Rp ${order.totalAmount.toLocaleString('id-ID')}
 
 =======================
 
@@ -762,6 +768,27 @@ Terima Kasih`;
     const locName = loc?.name || 'LaunderLink Pro';
     const locAddr = loc?.address || '';
     const locPhone = loc?.phone || '';
+    const paymentStatus = order.isPaid ? 'LUNAS' : 'BELUM BAYAR';
+    const methodText = order.isPaid && order.paymentMethod ? `(${order.paymentMethod})` : '';
+
+    // Calculate Estimation
+    let maxDurationHours = 0;
+    order.items.forEach(item => {
+        const svc = services.find(s => s.id === item.serviceId);
+        const duration = svc && svc.durationHours ? svc.durationHours : 48;
+        if (duration > maxDurationHours) {
+            maxDurationHours = duration;
+        }
+    });
+    if (maxDurationHours === 0) maxDurationHours = 48;
+
+    const dateIn = new Date(order.createdAt);
+    const dateEst = new Date(dateIn.getTime() + (maxDurationHours * 60 * 60 * 1000));
+    const formattedDateEst = dateEst.toLocaleString('id-ID', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    }).replace(/\./g, ':');
+
 
     // 1. Construct Receipt Text
     const line = "--------------------------------\n";
@@ -777,6 +804,7 @@ Terima Kasih`;
     text += `STRUK PESANAN\n`;
     text += `No Order : #${order.id.slice(0, 8)}\n`;
     text += `Tanggal  : ${new Date(order.createdAt).toLocaleString('id-ID')}\n`;
+    text += `Estimasi : ${formattedDateEst}\n`;
     text += `Pelanggan: ${order.customerName}\n`;
     text += `Kasir    : ${order.receivedBy || '-'}\n`;
     text += `Parfum   : ${order.perfume || 'Standard'}\n`;
@@ -794,6 +822,7 @@ Terima Kasih`;
     
     text += line;
     text += `TOTAL    : Rp ${order.totalAmount.toLocaleString('id-ID')}\n`;
+    text += `STATUS   : ${paymentStatus} ${methodText}\n`;
     text += line;
     text += `Terima Kasih\n`;
     text += `Simpan struk ini sbg bukti\n`;
@@ -857,6 +886,62 @@ Terima Kasih`;
     }
   };
 
+  const openPaymentModal = (order: Order) => {
+      setOrderToPay(order);
+      setSelectedPaymentMethod('CASH'); // Default
+      setIsPaymentModalOpen(true);
+  };
+
+  const confirmPayment = async () => {
+      if (!orderToPay) return;
+      
+      const orderId = orderToPay.id;
+      const method = selectedPaymentMethod;
+      
+      // Optimistic Update
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, isPaid: true, paymentMethod: method } : o));
+      setIsPaymentModalOpen(false);
+      setOrderToPay(null);
+
+      try {
+          await SupabaseService.confirmPayment(orderId, method);
+      } catch (err) {
+          console.error("Payment update failed", err);
+          // Revert could go here, but strict consistency usually requires refresh
+      }
+  };
+
+  const handleDeleteOrder = async (id: string) => {
+     if (!currentUser || currentUser.role !== UserRole.OWNER) {
+         alert("Hanya Owner yang dapat menghapus pesanan.");
+         return;
+     }
+
+     if (window.confirm("Apakah Anda yakin ingin MENGHAPUS pesanan ini? Tindakan ini tidak dapat dibatalkan.")) {
+         // Optimistic remove
+         setOrders(prev => prev.filter(o => o.id !== id));
+         
+         try {
+             await SupabaseService.deleteOrder(id);
+         } catch (e) {
+             console.error("Delete failed", e);
+             alert("Gagal menghapus pesanan.");
+             // Refresh data to revert optimistic update in case of error
+             fetchInitialData();
+         }
+     }
+  };
+
+  // Filter Logic
+  const filteredOrders = orders.filter(o => {
+      if (filterStatus === 'ALL') return true;
+      if (filterStatus === 'UNPAID') return !o.isPaid;
+      if (filterStatus === 'PAID') return o.isPaid;
+      return true;
+  });
+
+  const unpaidCount = orders.filter(o => !o.isPaid).length;
+
   if (view === 'NEW') {
     if (lastOrder) {
       return (
@@ -868,6 +953,8 @@ Terima Kasih`;
           <p className="text-slate-500 mt-2">Order ID: #{lastOrder.id.slice(0, 8)}</p>
           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mt-6 w-full max-w-md text-sm text-left">
              <div className="flex justify-between mb-2"><span>Total</span><span className="font-bold">Rp {lastOrder.totalAmount.toLocaleString('id-ID')}</span></div>
+             <div className="flex justify-between mb-2"><span>Status Bayar</span><span className={`font-bold ${lastOrder.isPaid ? 'text-green-600' : 'text-red-500'}`}>{lastOrder.isPaid ? 'LUNAS' : 'BELUM BAYAR'}</span></div>
+             {lastOrder.isPaid && lastOrder.paymentMethod && <div className="flex justify-between mb-2"><span>Metode</span><span className="font-bold">{lastOrder.paymentMethod}</span></div>}
              <div className="flex justify-between mb-2"><span>Customer</span><span>{lastOrder.customerName}</span></div>
              <div className="flex justify-between"><span>Tracking Link</span><span className="text-blue-600 underline cursor-pointer" onClick={() => navigator.clipboard.writeText(`${window.location.origin}?trackingId=${lastOrder.id}`)}>Copy Link</span></div>
           </div>
@@ -1025,7 +1112,7 @@ Terima Kasih`;
         </div>
 
         {/* Right: Cart Summary - Sticky on mobile bottom, Sidebar on Desktop */}
-        <div className="fixed bottom-0 left-0 right-0 md:static w-full md:w-80 bg-white border-t md:border-t-0 md:border-l border-slate-200 flex flex-col md:h-full shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] md:shadow-lg md:rounded-l-xl z-20 md:z-10 h-[250px] md:h-auto">
+        <div className="fixed bottom-0 left-0 right-0 md:static w-full md:w-80 bg-white border-t md:border-t-0 md:border-l border-slate-200 flex flex-col md:h-full shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] md:shadow-lg md:rounded-l-xl z-20 md:z-10 h-[270px] md:h-auto">
            {/* Mobile Handle / Header */}
            <div className="p-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center md:block">
               <h3 className="font-bold text-slate-800 flex items-center gap-2"><ShoppingBag size={18}/> Ringkasan <span className="md:hidden">({cart.length} item)</span></h3>
@@ -1064,17 +1151,65 @@ Terima Kasih`;
               )}
            </div>
 
-           <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-              <div className="flex justify-between items-center mb-3">
-                 <span className="text-slate-600">Total</span>
-                 <span className="text-2xl font-bold text-blue-600">Rp {cartTotal.toLocaleString('id-ID')}</span>
+           <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0 space-y-3">
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Opsi Pembayaran</label>
+                  
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                      <button 
+                          onClick={() => setIsPaid(false)}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${!isPaid ? 'bg-slate-700 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      >
+                          <Clock size={16} /> Bayar Nanti
+                      </button>
+                      <button 
+                          onClick={() => setIsPaid(true)}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${isPaid ? 'bg-green-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      >
+                          <Wallet size={16} /> Bayar Sekarang
+                      </button>
+                  </div>
+
+                  {isPaid ? (
+                      <div className="animate-fade-in bg-green-50 p-3 rounded-lg border border-green-100">
+                          <p className="text-xs text-green-700 font-semibold mb-2">Metode Pembayaran:</p>
+                          <div className="grid grid-cols-3 gap-2">
+                              {['CASH', 'QRIS', 'TRANSFER'].map((m) => (
+                                  <button
+                                      key={m}
+                                      onClick={() => setPaymentMethod(m as PaymentMethod)}
+                                      className={`py-2 text-[10px] sm:text-xs font-bold rounded border transition-all ${paymentMethod === m ? 'bg-white border-green-500 text-green-700 shadow-sm ring-1 ring-green-500' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                                  >
+                                      {m}
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  ) : (
+                      <div className="flex items-start gap-2 bg-slate-100 p-3 rounded-lg border border-slate-200">
+                          <AlertCircle size={16} className="text-slate-500 mt-0.5 shrink-0"/>
+                          <div>
+                              <p className="text-xs font-bold text-slate-700">Status: Belum Lunas (Unpaid)</p>
+                              <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                                  Tagihan akan dicatat. Pelanggan dapat melunasi saat pengambilan.
+                              </p>
+                          </div>
+                      </div>
+                  )}
               </div>
+
+              <div className="flex justify-between items-center px-1">
+                 <span className="text-slate-600 font-medium">Total Tagihan</span>
+                 <span className="text-2xl font-extrabold text-blue-600">Rp {cartTotal.toLocaleString('id-ID')}</span>
+              </div>
+              
               <button 
                 onClick={submitOrder} 
                 disabled={cart.length === 0 || !newOrderCustId || !newOrderLocId}
-                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition shadow-lg shadow-blue-200"
+                className={`w-full text-white py-3.5 rounded-xl font-bold hover:shadow-lg disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2 ${isPaid ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
-                 Buat Pesanan
+                 {isPaid ? <CheckCircle size={20} /> : <Clock size={20} />}
+                 {isPaid ? 'Bayar & Proses Order' : 'Simpan Order (Bayar Nanti)'}
               </button>
            </div>
         </div>
@@ -1102,8 +1237,30 @@ Terima Kasih`;
   // LIST VIEW
   return (
     <div className="space-y-6 animate-fade-in pb-20 md:pb-0">
-       <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-slate-800">Daftar Pesanan</h2>
+       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+              <h2 className="text-2xl font-bold text-slate-800">Daftar Pesanan</h2>
+              <div className="flex gap-2 mt-2">
+                 <button 
+                    onClick={() => setFilterStatus('ALL')} 
+                    className={`px-3 py-1 text-xs rounded-full font-medium transition ${filterStatus === 'ALL' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                 >
+                    Semua
+                 </button>
+                 <button 
+                    onClick={() => setFilterStatus('UNPAID')} 
+                    className={`px-3 py-1 text-xs rounded-full font-medium transition flex items-center gap-1 ${filterStatus === 'UNPAID' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                 >
+                    Belum Bayar ({unpaidCount})
+                 </button>
+                 <button 
+                    onClick={() => setFilterStatus('PAID')} 
+                    className={`px-3 py-1 text-xs rounded-full font-medium transition ${filterStatus === 'PAID' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
+                 >
+                    Lunas
+                 </button>
+              </div>
+          </div>
           <button onClick={() => setView('NEW')} className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 shadow-md flex items-center gap-2">
              <Plus size={18} /> Pesanan Baru
           </button>
@@ -1111,17 +1268,25 @@ Terima Kasih`;
 
        {loading ? <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-600 mb-2"/> Loading Orders...</div> : (
         <div className="grid grid-cols-1 gap-4">
-           {orders.map(order => (
+           {filteredOrders.map(order => (
               <div key={order.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition">
                  <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-4 border-b border-slate-50 pb-4">
                     <div>
-                       <div className="flex items-center gap-2">
+                       <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-lg text-slate-800">#{order.id.slice(0, 8)}</span>
                           <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide ${
                              order.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
                              order.status === 'READY' ? 'bg-blue-100 text-blue-700' :
                              'bg-yellow-100 text-yellow-700'
                           }`}>{order.status}</span>
+                          
+                          {/* PAYMENT BADGE */}
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide flex items-center gap-1 ${
+                             order.isPaid ? 'bg-green-600 text-white' : 'bg-red-500 text-white'
+                          }`}>
+                              {order.isPaid ? <CheckCircle size={10} /> : <CreditCard size={10} />}
+                              {order.isPaid ? (order.paymentMethod || 'LUNAS') : 'BELUM BAYAR'}
+                          </span>
                        </div>
                        <p className="text-slate-500 text-sm mt-1">Cust: <span className="font-medium text-slate-700">{order.customerName}</span> | {new Date(order.createdAt).toLocaleString()}</p>
                     </div>
@@ -1131,13 +1296,20 @@ Terima Kasih`;
                     </div>
                  </div>
                  
-                 <div className="flex justify-between items-center">
+                 <div className="flex justify-between items-center flex-wrap gap-4">
                     <div className="text-sm text-slate-600 flex gap-4">
                         <span className="flex items-center gap-1"><UserIcon size={14}/> {order.receivedBy || '-'}</span>
                         <span className="flex items-center gap-1"><Package size={14}/> {order.items.length} items</span>
                     </div>
                     
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap justify-end">
+                       {/* PAYMENT BUTTON FOR UNPAID ORDERS */}
+                       {!order.isPaid && (
+                           <button onClick={() => openPaymentModal(order)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1 shadow-sm">
+                               <CreditCard size={16} /> Bayar
+                           </button>
+                       )}
+
                        {order.status === 'PENDING' && (
                           <button onClick={() => updateStatus(order.id, OrderStatus.PROCESSING)} className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
                              Mulai Cuci
@@ -1163,16 +1335,69 @@ Terima Kasih`;
                        </button>
 
                        {currentUser?.role === UserRole.OWNER && (
-                        <button onClick={() => window.open(`/?trackingId=${order.id}`, '_blank')} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm transition border border-blue-200">
-                            Tracking
-                        </button>
+                        <div className="flex gap-2">
+                            <button onClick={() => window.open(`/?trackingId=${order.id}`, '_blank')} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm transition border border-blue-200">
+                                Tracking
+                            </button>
+                            <button onClick={() => handleDeleteOrder(order.id)} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-sm transition border border-red-200" title="Hapus Pesanan">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
                        )}
                     </div>
                  </div>
               </div>
            ))}
-           {orders.length === 0 && <div className="text-center p-10 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-300">Belum ada pesanan hari ini.</div>}
+           {filteredOrders.length === 0 && <div className="text-center p-10 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-300">Tidak ada pesanan yang sesuai filter.</div>}
         </div>
+       )}
+
+       {/* Payment Modal */}
+       {isPaymentModalOpen && orderToPay && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
+              <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
+                  <h3 className="text-xl font-bold text-slate-800 mb-4">Pembayaran Order</h3>
+                  
+                  <div className="bg-slate-50 p-4 rounded-lg mb-4 text-center">
+                     <p className="text-slate-500 text-xs uppercase mb-1">Total Tagihan</p>
+                     <p className="text-3xl font-extrabold text-blue-600">Rp {orderToPay.totalAmount.toLocaleString('id-ID')}</p>
+                     <p className="text-slate-400 text-xs mt-1">#{orderToPay.id.slice(0, 8)} - {orderToPay.customerName}</p>
+                  </div>
+
+                  <p className="text-sm font-medium text-slate-700 mb-2">Pilih Metode Pembayaran:</p>
+                  <div className="grid grid-cols-3 gap-2 mb-6">
+                      <button 
+                         onClick={() => setSelectedPaymentMethod('CASH')}
+                         className={`flex flex-col items-center justify-center p-3 rounded-lg border transition ${selectedPaymentMethod === 'CASH' ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                      >
+                         <Banknote size={24} className="mb-1" />
+                         <span className="text-xs font-bold">Tunai</span>
+                      </button>
+                      <button 
+                         onClick={() => setSelectedPaymentMethod('QRIS')}
+                         className={`flex flex-col items-center justify-center p-3 rounded-lg border transition ${selectedPaymentMethod === 'QRIS' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                      >
+                         <QrCode size={24} className="mb-1" />
+                         <span className="text-xs font-bold">QRIS</span>
+                      </button>
+                      <button 
+                         onClick={() => setSelectedPaymentMethod('TRANSFER')}
+                         className={`flex flex-col items-center justify-center p-3 rounded-lg border transition ${selectedPaymentMethod === 'TRANSFER' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                      >
+                         <CreditCard size={24} className="mb-1" />
+                         <span className="text-xs font-bold">Transfer</span>
+                      </button>
+                  </div>
+
+                  <button 
+                    onClick={confirmPayment}
+                    className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-md mb-3"
+                  >
+                    Konfirmasi Pembayaran
+                  </button>
+                  <button onClick={() => setIsPaymentModalOpen(false)} className="w-full text-slate-500 py-2 text-sm hover:text-slate-700">Batal</button>
+              </div>
+          </div>
        )}
 
        {/* Ready Modal */}

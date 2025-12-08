@@ -335,14 +335,15 @@ export const ServiceConfiguration: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.name && formData.price) {
+    if (formData.name && formData.price !== undefined) {
       await SupabaseService.saveService({
         id: formData.id || `svc-${Date.now()}`,
         name: formData.name,
         price: Number(formData.price),
         unit: formData.unit || 'item',
         description: formData.description || '',
-        durationHours: Number(formData.durationHours) || 48 // Default 48h
+        // Ensure durationHours is a number (default 48 if undefined)
+        durationHours: formData.durationHours !== undefined ? Number(formData.durationHours) : 48
       });
       setIsEditing(false);
       setFormData({});
@@ -396,7 +397,7 @@ export const ServiceConfiguration: React.FC = () => {
                     
                     <div className="flex items-center gap-1 mt-2 text-xs text-orange-600 font-medium bg-orange-50 w-fit px-2 py-1 rounded">
                         <Clock size={12} />
-                        Estimasi: {svc.durationHours ? `${svc.durationHours} Jam` : '2 Hari (Default)'}
+                        Estimasi: {svc.durationHours !== undefined ? `${svc.durationHours} Jam` : '2 Hari (Default)'}
                     </div>
 
                     <p className="text-slate-500 text-sm mt-2">{svc.description}</p>

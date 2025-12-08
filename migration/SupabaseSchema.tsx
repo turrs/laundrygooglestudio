@@ -68,6 +68,8 @@ create table public.orders (
   location_id uuid references public.locations(id),
   total_amount numeric not null,
   status text not null,
+  is_paid boolean default false, -- Payment Status
+  payment_method text, -- Payment Method (CASH, QRIS, TRANSFER)
   perfume text,
   received_by text,
   completed_by text,

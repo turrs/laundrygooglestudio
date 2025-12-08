@@ -12,6 +12,8 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED'
 }
 
+export type PaymentMethod = 'CASH' | 'QRIS' | 'TRANSFER';
+
 export interface User {
   id: string;
   name: string;
@@ -63,6 +65,8 @@ export interface Order {
   items: OrderItem[];
   totalAmount: number;
   status: OrderStatus;
+  isPaid: boolean; // New Field: Payment Status
+  paymentMethod?: PaymentMethod; // New Field: Payment Method
   createdAt: string; // ISO date
   updatedAt: string;
   perfume?: string;
