@@ -74,6 +74,9 @@ export interface Order {
   completedBy?: string; // Staff who finished the job
   rating?: number;
   review?: string;
+  // Discount Fields
+  discountCode?: string;
+  discountAmount?: number;
 }
 
 export interface Expense {
@@ -84,6 +87,18 @@ export interface Expense {
   date: string;
   recordedBy: string; // User Name
   locationId?: string;
+}
+
+export type DiscountType = 'PERCENTAGE' | 'FIXED';
+
+export interface Discount {
+  id: string;
+  code: string;
+  type: DiscountType;
+  value: number; // e.g. 10 for 10%, or 5000 for Rp 5000
+  quota: number;
+  usedCount: number;
+  isActive: boolean;
 }
 
 export interface AuthState {

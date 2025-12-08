@@ -6,6 +6,7 @@ import { AnalyticsDashboard } from './components/Dashboard';
 import { LocationManagement, StaffManagement, ServiceConfiguration } from './components/Admin';
 import { OrderManagement, CustomerManagement } from './components/Operations';
 import { ExpenseManagement } from './components/Expenses';
+import { DiscountManagement } from './components/Discounts';
 import { TrackingPage } from './components/Tracking';
 import { SupabaseService } from './migration/SupabaseService';
 import { 
@@ -20,7 +21,8 @@ import {
   X,
   Loader2,
   Wallet,
-  RefreshCw
+  RefreshCw,
+  Tag
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './migration/supabaseClient';
 import { SupabaseSchema } from './migration/SupabaseSchema';
@@ -28,7 +30,6 @@ import { SupabaseSchema } from './migration/SupabaseSchema';
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   
-  // Tracking ID logic
   const [trackingId, setTrackingId] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('trackingId');
@@ -36,18 +37,11 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState('ORDERS');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  // Loading starts true
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Ref to track if component is mounted (prevents memory leaks/errors on unmount)
   const isMounted = useRef(true);
 
-  // --- CORE AUTH LOGIC ---
   useEffect(() => {
     isMounted.current = true;
-
-    // 1. Jika Tracking ID ada, kita tidak butuh auth user, matikan loading segera.
     if (trackingId) {
       setIsLoading(false);
       return;
@@ -59,25 +53,17 @@ const App: React.FC = () => {
     }
 
     const initSession = async () => {
-      // SAFETY TIMEOUT: Create a promise that rejects after 5 seconds
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth Timeout')), 10000)
-      );
-
-      // ACTUAL LOGIC: The real auth check
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Auth Timeout')), 10000));
       const authPromise = new Promise<void>(async (resolve) => {
           try {
             const { data: { session }, error } = await supabase.auth.getSession();
-            
             if (error) throw error;
-
             if (session?.user) {
               const profile = await SupabaseService.getCurrentProfile();
               if (profile && isMounted.current) {
                 setUser(profile);
                 setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
               } else {
-                // Session valid but no profile found? Logout.
                 await supabase.auth.signOut();
                 if (isMounted.current) setUser(null);
               }
@@ -93,11 +79,9 @@ const App: React.FC = () => {
       });
 
       try {
-        // RACE: Whichever finishes first wins.
-        // If auth takes > 5s, timeout wins and we force stop loading.
         await Promise.race([authPromise, timeoutPromise]);
       } catch (err) {
-        console.warn("Auth initialization timed out. Forcing UI load.");
+        console.warn("Auth initialization timed out.");
       } finally {
         if (isMounted.current) setIsLoading(false);
       }
@@ -105,10 +89,8 @@ const App: React.FC = () => {
 
     initSession();
 
-    // Listener for auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted.current) return;
-      
       if (event === 'SIGNED_IN' && session) {
          const profile = await SupabaseService.getCurrentProfile();
          if (profile && isMounted.current) {
@@ -129,9 +111,6 @@ const App: React.FC = () => {
     };
   }, [trackingId]); 
 
-
-  // --- HANDLERS ---
-
   const handleClearTracking = () => {
       const url = new URL(window.location.href);
       url.searchParams.delete('trackingId');
@@ -149,7 +128,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
         await supabase.auth.signOut();
-        // State updated by listener
     } catch (e) {
         console.error("Logout error", e);
         setUser(null);
@@ -160,8 +138,6 @@ const App: React.FC = () => {
   const handleForceReload = () => {
       window.location.reload();
   };
-
-  // --- RENDERERS ---
 
   if (!isSupabaseConfigured) {
     return (
@@ -185,12 +161,7 @@ const App: React.FC = () => {
             <p className="text-sm text-slate-500 font-medium">Menghubungkan data...</p>
             <p className="text-xs text-slate-400 mt-1">Jika terlalu lama, silakan refresh manual.</p>
         </div>
-        
-        {/* Tombol Manual Refresh jika macet > 3 detik */}
-        <button 
-            onClick={handleForceReload}
-            className="mt-4 flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-xs text-slate-500 hover:bg-slate-100 transition shadow-sm"
-        >
+        <button onClick={handleForceReload} className="mt-4 flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-xs text-slate-500 hover:bg-slate-100 transition shadow-sm">
             <RefreshCw size={12} /> Reload Halaman
         </button>
       </div>
@@ -215,52 +186,39 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
-      {/* Sidebar - Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200">
          <div className="p-6 border-b border-slate-100">
-           <h1 className="text-xl font-bold text-blue-600 flex items-center gap-2">
-             LaunderLink Pro
-           </h1>
+           <h1 className="text-xl font-bold text-blue-600 flex items-center gap-2">LaunderLink Pro</h1>
            <p className="text-xs text-slate-500 mt-1">Logged in as {user.name}</p>
          </div>
-         
          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             {user.role === UserRole.OWNER && (
               <>
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-4 mt-4 mb-2">Analytics</div>
                 <NavItem id="DASHBOARD" label="Dashboard" icon={LayoutDashboard} />
-                
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-4 mt-6 mb-2">Management</div>
                 <NavItem id="LOCATIONS" label="Locations" icon={MapPin} />
                 <NavItem id="STAFF" label="Staff" icon={Users} />
                 <NavItem id="SERVICES" label="Services" icon={Settings} />
+                <NavItem id="DISCOUNTS" label="Discounts" icon={Tag} />
               </>
             )}
-
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-4 mt-6 mb-2">Operations</div>
             <NavItem id="ORDERS" label="Orders" icon={ShoppingBag} />
             <NavItem id="EXPENSES" label="Pengeluaran" icon={Wallet} />
             <NavItem id="CUSTOMERS" label="Customers" icon={UserIcon} />
          </nav>
-
          <div className="p-4 border-t border-slate-100">
-           <button onClick={handleLogout} className="flex items-center gap-3 text-slate-500 hover:text-red-600 px-4 py-2 w-full transition">
-             <LogOut size={20} /> Logout
-           </button>
+           <button onClick={handleLogout} className="flex items-center gap-3 text-slate-500 hover:text-red-600 px-4 py-2 w-full transition"><LogOut size={20} /> Logout</button>
          </div>
       </aside>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Mobile Header */}
         <header className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center z-20">
            <h1 className="font-bold text-blue-600">LaunderLink</h1>
-           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600">
-              {isMobileMenuOpen ? <X /> : <Menu />}
-           </button>
+           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600">{isMobileMenuOpen ? <X /> : <Menu />}</button>
         </header>
 
-        {/* Mobile Menu */}
         {isMobileMenuOpen && (
            <div className="absolute inset-0 bg-white z-10 pt-16 px-4 space-y-2 md:hidden">
               {user.role === UserRole.OWNER && (
@@ -269,14 +227,13 @@ const App: React.FC = () => {
                   <NavItem id="LOCATIONS" label="Locations" icon={MapPin} />
                   <NavItem id="STAFF" label="Staff" icon={Users} />
                   <NavItem id="SERVICES" label="Services" icon={Settings} />
+                  <NavItem id="DISCOUNTS" label="Discounts" icon={Tag} />
                 </>
               )}
               <NavItem id="ORDERS" label="Orders" icon={ShoppingBag} />
               <NavItem id="EXPENSES" label="Pengeluaran" icon={Wallet} />
               <NavItem id="CUSTOMERS" label="Customers" icon={UserIcon} />
-              <button onClick={handleLogout} className="flex items-center gap-3 text-red-600 px-4 py-3 w-full border-t mt-4">
-                 <LogOut size={20} /> Logout
-              </button>
+              <button onClick={handleLogout} className="flex items-center gap-3 text-red-600 px-4 py-3 w-full border-t mt-4"><LogOut size={20} /> Logout</button>
            </div>
         )}
 
@@ -285,6 +242,7 @@ const App: React.FC = () => {
            {activeTab === 'LOCATIONS' && user.role === UserRole.OWNER && <LocationManagement currentUser={user} />}
            {activeTab === 'STAFF' && user.role === UserRole.OWNER && <StaffManagement />}
            {activeTab === 'SERVICES' && user.role === UserRole.OWNER && <ServiceConfiguration />}
+           {activeTab === 'DISCOUNTS' && user.role === UserRole.OWNER && <DiscountManagement />}
            {activeTab === 'ORDERS' && <OrderManagement currentUser={user} />}
            {activeTab === 'EXPENSES' && <ExpenseManagement currentUser={user} />}
            {activeTab === 'CUSTOMERS' && <CustomerManagement currentUser={user} />}

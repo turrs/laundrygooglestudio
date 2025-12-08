@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS public.profiles CASCADE;
 DROP TABLE IF EXISTS public.customers CASCADE;
 DROP TABLE IF EXISTS public.services CASCADE;
 DROP TABLE IF EXISTS public.locations CASCADE;
+DROP TABLE IF EXISTS public.discounts CASCADE;
 
 -- 1. Enable UUID extension
 create extension if not exists "uuid-ossp";
@@ -33,7 +34,19 @@ create table public.services (
   price numeric not null,
   unit text not null,
   description text,
-  duration_hours numeric default 48, -- New field: Default 48 hours (2 days)
+  duration_hours numeric default 48, 
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Discounts (New Table)
+create table public.discounts (
+  id uuid default gen_random_uuid() primary key,
+  code text not null unique,
+  type text not null check (type in ('PERCENTAGE', 'FIXED')),
+  value numeric not null,
+  quota integer default 0,
+  used_count integer default 0,
+  is_active boolean default true,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -50,8 +63,8 @@ create table public.customers (
 
 -- Profiles
 create table public.profiles (
-  id uuid references auth.users(id) on delete cascade primary key, -- Linked directly to Auth ID
-  auth_id uuid references auth.users(id) on delete cascade, -- Redundant but kept for query compatibility
+  id uuid references auth.users(id) on delete cascade primary key, 
+  auth_id uuid references auth.users(id) on delete cascade, 
   name text not null,
   email text not null,
   role text not null check (role in ('OWNER', 'STAFF')),
@@ -68,13 +81,15 @@ create table public.orders (
   location_id uuid references public.locations(id),
   total_amount numeric not null,
   status text not null,
-  is_paid boolean default false, -- Payment Status
-  payment_method text, -- Payment Method (CASH, QRIS, TRANSFER)
+  is_paid boolean default false, 
+  payment_method text, 
   perfume text,
   received_by text,
   completed_by text,
   rating integer,
   review text,
+  discount_code text, -- New Field
+  discount_amount numeric default 0, -- New Field
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -109,47 +124,29 @@ alter table public.profiles enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.expenses enable row level security;
+alter table public.discounts enable row level security;
 
 -- 4. Create Policies
-
--- Locations
 create policy "Enable all for authenticated" on public.locations for all to authenticated using (true) with check (true);
-
--- Services
 create policy "Enable all for authenticated" on public.services for all to authenticated using (true) with check (true);
-
--- Customers
 create policy "Enable all for authenticated" on public.customers for all to authenticated using (true) with check (true);
-
--- Profiles
 create policy "Public read profiles" on public.profiles for select to authenticated using (true);
 create policy "Users can update own profile" on public.profiles for update to authenticated using (auth.uid() = id);
-
--- Orders
 create policy "Enable all for authenticated" on public.orders for all to authenticated using (true) with check (true);
 create policy "Enable read for tracking" on public.orders for select to anon using (true);
 create policy "Enable update for tracking" on public.orders for update to anon using (true);
-
--- Order Items
 create policy "Enable all for authenticated" on public.order_items for all to authenticated using (true) with check (true);
 create policy "Enable read for tracking" on public.order_items for select to anon using (true);
-
--- Expenses
 create policy "Enable all for authenticated" on public.expenses for all to authenticated using (true) with check (true);
+create policy "Enable all for authenticated" on public.discounts for all to authenticated using (true) with check (true);
 
 -- 5. PERFORMANCE INDEXES
 CREATE INDEX idx_orders_customer_id ON public.orders(customer_id);
 CREATE INDEX idx_orders_location_id ON public.orders(location_id);
 CREATE INDEX idx_orders_created_at ON public.orders(created_at DESC);
-CREATE INDEX idx_orders_status ON public.orders(status);
-CREATE INDEX idx_order_items_order_id ON public.order_items(order_id);
-CREATE INDEX idx_expenses_date ON public.expenses(date DESC);
-CREATE INDEX idx_expenses_location_id ON public.expenses(location_id);
-CREATE INDEX idx_customers_phone ON public.customers(phone);
-CREATE INDEX idx_customers_name ON public.customers(name);
+CREATE INDEX idx_discounts_code ON public.discounts(code);
 
--- 6. TRIGGER FOR NEW USER CREATION (FIX FOR MISSING PROFILES)
--- This function runs automatically whenever a new user signs up via Auth
+-- 6. TRIGGER FOR NEW USER CREATION
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -160,13 +157,12 @@ begin
     new.raw_user_meta_data->>'name',
     new.email,
     new.raw_user_meta_data->>'role',
-    (new.raw_user_meta_data->>'role')::text = 'OWNER' -- Auto approve if OWNER, set false if STAFF
+    false 
   );
   return new;
 end;
 $$ language plpgsql security definer;
 
--- Trigger execution
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
@@ -186,7 +182,7 @@ export const SupabaseSchema = () => {
       <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
         <div>
             <h3 className="text-xl font-bold text-red-400">PENTING: Reset Database Schema</h3>
-            <p className="text-slate-400 text-sm">Update Skema Database diperlukan (Auto-Profile Trigger). <br/>Copy kode di bawah, lalu paste & jalankan di <strong>Supabase SQL Editor</strong>.</p>
+            <p className="text-slate-400 text-sm">Update Skema Database diperlukan (Tabel Discounts Baru). <br/>Copy kode di bawah, lalu paste & jalankan di <strong>Supabase SQL Editor</strong>.</p>
         </div>
         <button 
           onClick={handleCopy}

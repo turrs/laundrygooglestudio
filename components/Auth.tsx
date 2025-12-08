@@ -52,10 +52,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           return;
         }
 
-        // --- CHECK APPROVAL ---
-        if (profile.role === UserRole.STAFF && !profile.isApproved) {
+        // --- CHECK APPROVAL (UPDATED) ---
+        // Block login for ANY role if not approved.
+        if (!profile.isApproved) {
            await (supabase.auth as any).signOut();
-           setError("Akun Anda belum disetujui oleh Owner. Silakan hubungi Owner toko.");
+           const msg = profile.role === UserRole.OWNER 
+                ? "Akun Owner menunggu persetujuan Database/Admin." 
+                : "Akun Anda belum disetujui oleh Owner.";
+           setError(msg);
            setLoading(false);
            return;
         }
@@ -109,24 +113,19 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         setLoading(false);
 
         // 3. Post-Registration Logic
-        const isApproved = role === UserRole.OWNER; // Logic matches DB trigger
-
-        if (!isApproved) {
-            // Staff flow: Show message, don't login
-            setSuccessMsg("Registrasi berhasil! Akun Anda sedang menunggu persetujuan Owner.");
-            // Force logout
-            await (supabase.auth as any).signOut();
+        // NOW: Everyone needs approval. No auto-login for Owners.
+        
+        let msg = "";
+        if (role === UserRole.OWNER) {
+            msg = "Registrasi berhasil! Akun Owner menunggu persetujuan (Set 'is_approved=true' di Database).";
         } else {
-             // Owner flow
-             if (!data.session) {
-                // Email confirmation required case
-                setSuccessMsg("Registrasi berhasil! Cek email untuk konfirmasi.");
-             } else {
-                // Auto login successful, but we usually want to force a fresh login to be safe or redirect
-                setSuccessMsg("Registrasi berhasil! Silakan Login.");
-                setView('LOGIN');
-             }
+            msg = "Registrasi berhasil! Akun Staff menunggu persetujuan Owner.";
         }
+        
+        setSuccessMsg(msg);
+        
+        // Force logout immediately because they aren't approved yet
+        await (supabase.auth as any).signOut();
       }
     } catch (err: any) {
       setError(err.message || 'Registrasi gagal.');

@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { User, Location, Service, Customer, Order, OrderStatus, UserRole, Expense, PaymentMethod } from '../types';
+import { User, Location, Service, Customer, Order, OrderStatus, UserRole, Expense, PaymentMethod, Discount } from '../types';
 
 /**
  * SupabaseService
@@ -11,40 +11,27 @@ export const SupabaseService = {
   
   // --- AUTH / PROFILES ---
   
-  // Optimization: Allow passing userId directly to skip getSession
   async getCurrentProfile(userId?: string): Promise<User | null> {
-    
-    // Safety Timeout Wrapper: Prevent infinite hangs on network glitches
     const fetchLogic = async () => {
         try {
             let uid = userId;
-
-            // If no ID provided, try to get from session
             if (!uid) {
                 const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-                if (sessionError || !session?.user) {
-                    return null; 
-                }
+                if (sessionError || !session?.user) return null; 
                 uid = session.user.id;
             }
-
             if (!uid) return null;
 
-            // Fetch Profile
             const { data: profile, error } = await supabase
             .from('profiles')
             .select('*')
-            .or(`auth_id.eq.${uid},id.eq.${uid}`) // Handle both legacy and new schema
+            .or(`auth_id.eq.${uid},id.eq.${uid}`)
             .single();
 
             if (error) {
-                // PGRST116 = Row not found. Normal for fresh registrations.
-                if (error.code !== 'PGRST116') {
-                    console.error("DB Error fetching profile:", error.message);
-                }
+                if (error.code !== 'PGRST116') console.error("DB Error fetching profile:", error.message);
                 return null;
             }
-
             if (!profile) return null;
 
             return {
@@ -61,7 +48,6 @@ export const SupabaseService = {
         }
     };
 
-    // Race against a 10s timeout
     const timeoutPromise = new Promise<null>((resolve) => 
         setTimeout(() => {
             console.warn("getCurrentProfile timed out");
@@ -73,22 +59,92 @@ export const SupabaseService = {
   },
 
   async approveStaff(profileId: string): Promise<void> {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_approved: true })
-        .eq('id', profileId);
-      
+      const { error } = await supabase.from('profiles').update({ is_approved: true }).eq('id', profileId);
       if (error) throw error;
   },
 
   async rejectStaff(profileId: string): Promise<void> {
-      // Option A: Just delete the profile
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', profileId);
-        
+      const { error } = await supabase.from('profiles').delete().eq('id', profileId);
       if (error) throw error;
+  },
+
+  // --- DISCOUNTS ---
+
+  async getDiscounts(): Promise<Discount[]> {
+    const { data, error } = await supabase.from('discounts').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data.map((d: any) => ({
+      id: d.id,
+      code: d.code,
+      type: d.type,
+      value: d.value,
+      quota: d.quota,
+      usedCount: d.used_count,
+      isActive: d.is_active
+    }));
+  },
+
+  async saveDiscount(disc: Discount): Promise<void> {
+    try {
+      const isNew = disc.id.startsWith('disc-');
+      const payload = {
+        code: disc.code.toUpperCase(),
+        type: disc.type,
+        value: disc.value,
+        quota: disc.quota,
+        is_active: disc.isActive
+      };
+
+      if (isNew) {
+        const { error } = await supabase.from('discounts').insert([payload]);
+        if(error) throw error;
+      } else {
+        const { error } = await supabase.from('discounts').update(payload).eq('id', disc.id);
+        if(error) throw error;
+      }
+    } catch (err: any) {
+      console.error("Failed to save discount:", err);
+      alert(`Gagal menyimpan voucher: ${err.message || 'Unknown error'}`);
+      throw err;
+    }
+  },
+
+  async deleteDiscount(id: string): Promise<void> {
+    const { error } = await supabase.from('discounts').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async validateDiscount(code: string): Promise<{ isValid: boolean; discount?: Discount; message?: string }> {
+    const { data, error } = await supabase
+      .from('discounts')
+      .select('*')
+      .eq('code', code.toUpperCase())
+      .single();
+
+    if (error || !data) {
+      return { isValid: false, message: 'Kode voucher tidak ditemukan.' };
+    }
+
+    if (!data.is_active) {
+      return { isValid: false, message: 'Voucher tidak aktif.' };
+    }
+
+    if (data.quota > 0 && data.used_count >= data.quota) {
+      return { isValid: false, message: 'Kuota voucher habis.' };
+    }
+
+    return { 
+      isValid: true, 
+      discount: {
+        id: data.id,
+        code: data.code,
+        type: data.type,
+        value: data.value,
+        quota: data.quota,
+        usedCount: data.used_count,
+        isActive: data.is_active
+      } 
+    };
   },
 
   // --- LOCATIONS ---
@@ -103,7 +159,6 @@ export const SupabaseService = {
     try {
       const { id, ...payload } = loc;
       const isNew = id.startsWith('loc-');
-      
       if (isNew) {
         const { error } = await supabase.from('locations').insert([payload]);
         if(error) throw error;
@@ -112,8 +167,6 @@ export const SupabaseService = {
         if(error) throw error;
       }
     } catch (err: any) {
-      console.error("Failed to save location:", err);
-      alert(`Gagal menyimpan lokasi: ${err.message || 'Unknown error'}`);
       throw err;
     }
   },
@@ -128,14 +181,12 @@ export const SupabaseService = {
   async getServices(): Promise<Service[]> {
     const { data, error } = await supabase.from('services').select('*');
     if (error) throw error;
-    // Map database snake_case to camelCase
     return data?.map((s: any) => ({
         id: s.id,
         name: s.name,
         price: s.price,
         unit: s.unit,
         description: s.description,
-        // Use coalescing to allow 0, fallback to 48
         durationHours: s.duration_hours !== null ? s.duration_hours : 48
     })) || [];
   },
@@ -143,16 +194,13 @@ export const SupabaseService = {
   async saveService(svc: Service): Promise<void> {
     try {
       const isNew = svc.id.startsWith('svc-');
-      
       const payload = {
           name: svc.name,
           price: svc.price,
           unit: svc.unit,
           description: svc.description,
-          // Use coalescing to allow 0.
           duration_hours: svc.durationHours ?? 48
       };
-
       if (isNew) {
         const { error } = await supabase.from('services').insert([payload]);
         if(error) throw error;
@@ -161,8 +209,6 @@ export const SupabaseService = {
         if(error) throw error;
       }
     } catch (err: any) {
-      console.error("Failed to save service:", err);
-      alert(`Gagal menyimpan layanan: ${err.message || 'Unknown error'}. Pastikan skema database sudah diupdate.`);
       throw err;
     }
   },
@@ -184,7 +230,6 @@ export const SupabaseService = {
     try {
       const { id, ...payload } = cust;
       const isNew = id.startsWith('cust-');
-
       if (isNew) {
         const { data, error } = await supabase.from('customers').insert([payload]).select().single();
         if(error) throw error;
@@ -195,49 +240,27 @@ export const SupabaseService = {
         return data as Customer;
       }
     } catch (err: any) {
-       console.error("Failed to save customer:", err);
-       alert(`Gagal menyimpan pelanggan: ${err.message || 'Unknown error'}`);
        throw err;
     }
   },
 
   // --- ORDERS ---
 
-  // OPTIMIZED: Added limit and date range options
   async getOrders(options?: { limit?: number, startDate?: string, endDate?: string }): Promise<Order[]> {
-    // Join with order_items
-    let query = supabase
-      .from('orders')
-      .select(`
-        *,
-        items:order_items (*)
-      `)
-      .order('created_at', { ascending: false });
+    let query = supabase.from('orders').select(`*, items:order_items (*)`).order('created_at', { ascending: false });
 
-    // Apply Limits (Pagination)
-    if (options?.limit) {
-        query = query.limit(options.limit);
-    }
-
-    // Apply Date Filters (for Dashboard)
-    // IMPORTANT: endDate usually needs to cover the full day, so we might need to adjust logic if just 'YYYY-MM-DD' is passed.
-    // Here we assume ISO strings or dates provided correctly.
-    if (options?.startDate) {
-        query = query.gte('created_at', options.startDate); // Start of day
-    }
+    if (options?.limit) query = query.limit(options.limit);
+    if (options?.startDate) query = query.gte('created_at', options.startDate);
     if (options?.endDate) {
-        // Ensure we get everything up to the end of that day if a simple date string is passed
         let end = options.endDate;
         if (end.length === 10) end = `${end}T23:59:59`;
         query = query.lte('created_at', end);
     }
 
     const { data, error } = await query;
-
     if (error) throw error;
     if (!data) return [];
 
-    // Map DB snake_case to App camelCase
     return data.map((o: any) => ({
       id: o.id,
       customerId: o.customer_id,
@@ -245,8 +268,8 @@ export const SupabaseService = {
       locationId: o.location_id,
       totalAmount: o.total_amount,
       status: o.status as OrderStatus,
-      isPaid: o.is_paid || false, // Map payment status
-      paymentMethod: o.payment_method as PaymentMethod, // Map payment method
+      isPaid: o.is_paid || false,
+      paymentMethod: o.payment_method as PaymentMethod,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
       perfume: o.perfume,
@@ -254,6 +277,8 @@ export const SupabaseService = {
       completedBy: o.completed_by,
       rating: o.rating,
       review: o.review,
+      discountCode: o.discount_code,
+      discountAmount: o.discount_amount || 0,
       items: o.items.map((i: any) => ({
         serviceId: i.service_id,
         serviceName: i.service_name,
@@ -264,19 +289,9 @@ export const SupabaseService = {
   },
 
   async getOrderById(orderId: string): Promise<Order | null> {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        items:order_items (*)
-      `)
-      .eq('id', orderId)
-      .single();
+    const { data, error } = await supabase.from('orders').select(`*, items:order_items (*)`).eq('id', orderId).single();
 
-    if (error) {
-        console.error("Error fetching specific order:", error);
-        return null;
-    }
+    if (error) { console.error("Error fetching specific order:", error); return null; }
     if (!data) return null;
 
     return {
@@ -295,6 +310,8 @@ export const SupabaseService = {
       completedBy: data.completed_by,
       rating: data.rating,
       review: data.review,
+      discountCode: data.discount_code,
+      discountAmount: data.discount_amount || 0,
       items: data.items.map((i: any) => ({
         serviceId: i.service_id,
         serviceName: i.service_name,
@@ -308,20 +325,21 @@ export const SupabaseService = {
     try {
       const isNew = ord.id.startsWith('ord-');
       
-      // Prepare Order Payload
       const orderPayload = {
         customer_id: ord.customerId,
         customer_name: ord.customerName,
         location_id: ord.locationId,
         total_amount: ord.totalAmount,
         status: ord.status,
-        is_paid: ord.isPaid, // Include payment status
-        payment_method: ord.paymentMethod, // Include payment method
+        is_paid: ord.isPaid,
+        payment_method: ord.paymentMethod,
         perfume: ord.perfume,
         received_by: ord.receivedBy,
         completed_by: ord.completedBy,
         rating: ord.rating,
         review: ord.review,
+        discount_code: ord.discountCode,
+        discount_amount: ord.discountAmount,
         updated_at: new Date().toISOString()
       };
 
@@ -329,7 +347,7 @@ export const SupabaseService = {
       let savedOrderData: any = null;
 
       if (isNew) {
-        // Insert new order and get the REAL UUID
+        // 1. Insert Order
         const { data, error } = await supabase
           .from('orders')
           .insert([{ ...orderPayload, created_at: new Date().toISOString() }])
@@ -340,7 +358,7 @@ export const SupabaseService = {
         savedOrderData = data;
         orderId = data.id;
 
-        // Insert Items
+        // 2. Insert Items
         const itemsPayload = ord.items.map(i => ({
           order_id: orderId,
           service_id: i.serviceId,
@@ -348,24 +366,31 @@ export const SupabaseService = {
           price: i.price,
           quantity: i.quantity
         }));
-        
         const { error: itemsError } = await supabase.from('order_items').insert(itemsPayload);
         if(itemsError) throw itemsError;
 
+        // 3. Increment Discount Usage (if applicable)
+        if (ord.discountCode) {
+            // Using RPC or raw query is better for atomic increment, but let's do simple read-write or SQL increment
+            // Supabase doesn't support easy `increment` via JS client without RPC.
+            // We'll fetching the discount ID by code then increment.
+            const { data: disc } = await supabase.from('discounts').select('id, used_count').eq('code', ord.discountCode).single();
+            if (disc) {
+                await supabase.from('discounts').update({ used_count: disc.used_count + 1 }).eq('id', disc.id);
+            }
+        }
+
       } else {
-        // Update Order
         const { data, error } = await supabase
             .from('orders')
             .update(orderPayload)
             .eq('id', orderId)
             .select()
             .single();
-            
         if(error) throw error;
         savedOrderData = data;
       }
 
-      // Return the full Order object to update local state
       return {
         id: orderId,
         customerId: savedOrderData.customer_id,
@@ -382,7 +407,9 @@ export const SupabaseService = {
         completedBy: savedOrderData.completed_by,
         rating: savedOrderData.rating,
         review: savedOrderData.review,
-        items: ord.items // Items are usually static or we assume they saved correctly
+        discountCode: savedOrderData.discount_code,
+        discountAmount: savedOrderData.discount_amount || 0,
+        items: ord.items
       };
 
     } catch (err: any) {
@@ -393,12 +420,8 @@ export const SupabaseService = {
   },
 
   async deleteOrder(orderId: string): Promise<void> {
-    // 1. Manually delete order_items first
-    // This acts as a safety net if "ON DELETE CASCADE" is not configured in the database schema
     const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', orderId);
     if (itemsError) throw itemsError;
-
-    // 2. Delete the order
     const { error } = await supabase.from('orders').delete().eq('id', orderId);
     if (error) throw error;
   },
@@ -406,30 +429,18 @@ export const SupabaseService = {
   async updateOrderStatus(orderId: string, status: OrderStatus, completedBy?: string): Promise<void> {
     const payload: any = { status, updated_at: new Date().toISOString() };
     if (completedBy) payload.completed_by = completedBy;
-    
     await supabase.from('orders').update(payload).eq('id', orderId);
   },
 
   async confirmPayment(orderId: string, method: PaymentMethod): Promise<void> {
-    await supabase.from('orders').update({ 
-        is_paid: true, 
-        payment_method: method,
-        updated_at: new Date().toISOString() 
-    }).eq('id', orderId);
+    await supabase.from('orders').update({ is_paid: true, payment_method: method, updated_at: new Date().toISOString() }).eq('id', orderId);
   },
 
   // --- EXPENSES ---
 
-  // OPTIMIZED: Added date range
   async getExpenses(options?: { startDate?: string, endDate?: string }): Promise<Expense[]> {
-    let query = supabase
-      .from('expenses')
-      .select('*')
-      .order('date', { ascending: false });
-
-    if (options?.startDate) {
-        query = query.gte('date', options.startDate);
-    }
+    let query = supabase.from('expenses').select('*').order('date', { ascending: false });
+    if (options?.startDate) query = query.gte('date', options.startDate);
     if (options?.endDate) {
         let end = options.endDate;
         if (end.length === 10) end = `${end}T23:59:59`;
@@ -437,11 +448,8 @@ export const SupabaseService = {
     }
 
     const { data, error } = await query;
-
     if (error) throw error;
-    if (!data) return [];
-
-    return data.map((e: any) => ({
+    return data?.map((e: any) => ({
       id: e.id,
       description: e.description,
       amount: e.amount,
@@ -449,7 +457,7 @@ export const SupabaseService = {
       date: e.date,
       recordedBy: e.recorded_by,
       locationId: e.location_id
-    }));
+    })) || [];
   },
 
   async saveExpense(exp: Expense): Promise<void> {
@@ -463,7 +471,6 @@ export const SupabaseService = {
          recorded_by: exp.recordedBy,
          location_id: exp.locationId
        };
-
        if (isNew) {
          const { error } = await supabase.from('expenses').insert([payload]);
          if(error) throw error;
@@ -471,11 +478,7 @@ export const SupabaseService = {
          const { error } = await supabase.from('expenses').update(payload).eq('id', exp.id);
          if(error) throw error;
        }
-     } catch (err: any) {
-       console.error("Failed to save expense:", err);
-       alert(`Gagal menyimpan pengeluaran: ${err.message || 'Unknown error'}`);
-       throw err;
-     }
+     } catch (err: any) { throw err; }
   },
 
   async deleteExpense(id: string): Promise<void> {
