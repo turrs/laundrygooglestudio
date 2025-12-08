@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Order, Customer, OrderStatus, Service, Location, User, UserRole } from '../types';
 import { SupabaseService } from '../migration/SupabaseService';
 import { supabase } from '../migration/supabaseClient';
-import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Clock, Download, Upload, FileText } from 'lucide-react';
+import { ShoppingBag, CheckCircle, Package, User as UserIcon, Plus, Search, Printer, MessageCircle, X, CheckSquare, Phone, Loader2, ArrowRight, Send, CheckSquare as CheckSquareIcon, List, Users, Download, Upload, FileText } from 'lucide-react';
 
 // --- CUSTOMERS ---
 
