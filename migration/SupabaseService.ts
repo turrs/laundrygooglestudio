@@ -11,46 +11,65 @@ export const SupabaseService = {
   
   // --- AUTH / PROFILES ---
   
-  async getCurrentProfile(): Promise<User | null> {
-    try {
-        // 1. Get the session directly. This is faster if we just checked session in App.tsx
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session?.user) {
-            return null; 
-        }
-        
-        const user = session.user;
+  // Optimization: Allow passing userId directly to skip getSession
+  async getCurrentProfile(userId?: string): Promise<User | null> {
+    
+    // Safety Timeout Wrapper: Prevent infinite hangs on network glitches
+    const fetchLogic = async () => {
+        try {
+            let uid = userId;
 
-        // 2. Fetch Profile based on Auth ID
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .or(`auth_id.eq.${user.id},id.eq.${user.id}`) // Handle both legacy and new schema
-          .single();
-
-        if (error) {
-            // PGRST116 = Row not found. Normal for fresh registrations before trigger runs.
-            if (error.code !== 'PGRST116') {
-                console.error("DB Error fetching profile:", error.message);
+            // If no ID provided, try to get from session
+            if (!uid) {
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                if (sessionError || !session?.user) {
+                    return null; 
+                }
+                uid = session.user.id;
             }
+
+            if (!uid) return null;
+
+            // Fetch Profile
+            const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`auth_id.eq.${uid},id.eq.${uid}`) // Handle both legacy and new schema
+            .single();
+
+            if (error) {
+                // PGRST116 = Row not found. Normal for fresh registrations.
+                if (error.code !== 'PGRST116') {
+                    console.error("DB Error fetching profile:", error.message);
+                }
+                return null;
+            }
+
+            if (!profile) return null;
+
+            return {
+            id: profile.id,
+            name: profile.name,
+            email: profile.email,
+            role: profile.role as UserRole,
+            locationId: profile.location_id,
+            isApproved: profile.is_approved
+            };
+        } catch (err) {
+            console.error("Critical error in getCurrentProfile:", err);
             return null;
         }
+    };
 
-        if (!profile) return null;
+    // Race against a 10s timeout
+    const timeoutPromise = new Promise<null>((resolve) => 
+        setTimeout(() => {
+            console.warn("getCurrentProfile timed out");
+            resolve(null);
+        }, 10000)
+    );
 
-        return {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          role: profile.role as UserRole,
-          locationId: profile.location_id,
-          isApproved: profile.is_approved
-        };
-    } catch (err) {
-        console.error("Critical error in getCurrentProfile:", err);
-        return null;
-    }
+    return Promise.race([fetchLogic(), timeoutPromise]);
   },
 
   async approveStaff(profileId: string): Promise<void> {

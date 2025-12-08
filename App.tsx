@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole } from './types';
 import { Auth } from './components/Auth';
 import { AnalyticsDashboard } from './components/Dashboard';
@@ -19,13 +19,13 @@ import {
   Menu,
   X,
   Loader2,
-  Wallet
+  Wallet,
+  RefreshCw
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './migration/supabaseClient';
 import { SupabaseSchema } from './migration/SupabaseSchema';
 
 const App: React.FC = () => {
-  // State User bersih, tidak ada inisialisasi kompleks dari localStorage manual
   const [user, setUser] = useState<User | null>(null);
   
   // Tracking ID logic
@@ -37,12 +37,16 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('ORDERS');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // DEFAULT LOADING TRUE
-  // Kita berasumsi aplikasi sedang memuat sampai Supabase bilang "ada session" atau "tidak ada".
+  // Loading starts true
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Ref to track if component is mounted (prevents memory leaks/errors on unmount)
+  const isMounted = useRef(true);
 
   // --- CORE AUTH LOGIC ---
   useEffect(() => {
+    isMounted.current = true;
+
     // 1. Jika Tracking ID ada, kita tidak butuh auth user, matikan loading segera.
     if (trackingId) {
       setIsLoading(false);
@@ -55,57 +59,72 @@ const App: React.FC = () => {
     }
 
     const initSession = async () => {
-      try {
-        // A. Cek apakah ada session tersimpan di LocalStorage (SDK Handle ini)
-        const { data: { session } } = await supabase.auth.getSession();
+      // SAFETY TIMEOUT: Create a promise that rejects after 5 seconds
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth Timeout')), 10000)
+      );
 
-        if (session?.user) {
-          // B. Jika ada session, ambil data profil lengkap dari DB
-          // Token otomatis dipakai oleh SupabaseService
-          const profile = await SupabaseService.getCurrentProfile();
-          
-          if (profile) {
-            setUser(profile);
-            // Set default tab based on role
-            setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
-          } else {
-            // Edge Case: Ada session auth, tapi tidak ada row di tabel profiles
-            // Logout untuk pembersihan
-            await supabase.auth.signOut();
-            setUser(null);
+      // ACTUAL LOGIC: The real auth check
+      const authPromise = new Promise<void>(async (resolve) => {
+          try {
+            const { data: { session }, error } = await supabase.auth.getSession();
+            
+            if (error) throw error;
+
+            if (session?.user) {
+              const profile = await SupabaseService.getCurrentProfile();
+              if (profile && isMounted.current) {
+                setUser(profile);
+                setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+              } else {
+                // Session valid but no profile found? Logout.
+                await supabase.auth.signOut();
+                if (isMounted.current) setUser(null);
+              }
+            } else {
+                if (isMounted.current) setUser(null);
+            }
+          } catch (error) {
+            console.error("Auth check failed:", error);
+            if (isMounted.current) setUser(null);
+          } finally {
+            resolve();
           }
-        } else {
-            // Tidak ada session (User belum login)
-            setUser(null);
-        }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-        setUser(null);
+      });
+
+      try {
+        // RACE: Whichever finishes first wins.
+        // If auth takes > 5s, timeout wins and we force stop loading.
+        await Promise.race([authPromise, timeoutPromise]);
+      } catch (err) {
+        console.warn("Auth initialization timed out. Forcing UI load.");
       } finally {
-        // Apapun yang terjadi (Login/Tidak/Error), loading selesai.
-        setIsLoading(false);
+        if (isMounted.current) setIsLoading(false);
       }
     };
 
     initSession();
 
-    // C. Listener untuk perubahan Auth (Login/Logout realtime)
+    // Listener for auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted.current) return;
+      
       if (event === 'SIGNED_IN' && session) {
-         // User baru saja login
          const profile = await SupabaseService.getCurrentProfile();
-         if (profile) {
+         if (profile && isMounted.current) {
              setUser(profile);
              setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+             setIsLoading(false);
          }
       } else if (event === 'SIGNED_OUT') {
-         // User logout
          setUser(null);
          setActiveTab('ORDERS');
+         setIsLoading(false);
       }
     });
 
     return () => {
+      isMounted.current = false;
       authListener.subscription.unsubscribe();
     };
   }, [trackingId]); 
@@ -118,9 +137,6 @@ const App: React.FC = () => {
       url.searchParams.delete('trackingId');
       window.history.pushState({}, '', url);
       setTrackingId(null);
-      
-      // Saat keluar tracking, jika user null, kita set loading true sebentar
-      // untuk memastikan cek ulang session (walaupun useEffect akan handle)
       if (!user) setIsLoading(true);
   };
 
@@ -130,19 +146,23 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    setIsLoading(true);
     try {
         await supabase.auth.signOut();
-        // State update dihandle oleh onAuthStateChange ('SIGNED_OUT')
+        // State updated by listener
     } catch (e) {
         console.error("Logout error", e);
-        // Fallback manual jika listener gagal
         setUser(null);
+        setIsLoading(false);
     }
+  };
+
+  const handleForceReload = () => {
+      window.location.reload();
   };
 
   // --- RENDERERS ---
 
-  // 1. Schema Check
   if (!isSupabaseConfigured) {
     return (
       <div className="min-h-screen bg-slate-100 p-4 overflow-auto">
@@ -153,27 +173,34 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. Tracking Page (Priority High)
   if (trackingId) {
     return <TrackingPage orderId={trackingId} onClearTracking={handleClearTracking} />;
   }
 
-  // 3. Loading Screen (Saat cek session)
   if (isLoading) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 text-blue-600 gap-4">
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 text-blue-600 gap-4 p-4 text-center">
         <Loader2 className="animate-spin w-10 h-10" />
-        <p className="text-sm text-slate-400 font-medium">Memuat data...</p>
+        <div>
+            <p className="text-sm text-slate-500 font-medium">Menghubungkan data...</p>
+            <p className="text-xs text-slate-400 mt-1">Jika terlalu lama, silakan refresh manual.</p>
+        </div>
+        
+        {/* Tombol Manual Refresh jika macet > 3 detik */}
+        <button 
+            onClick={handleForceReload}
+            className="mt-4 flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-xs text-slate-500 hover:bg-slate-100 transition shadow-sm"
+        >
+            <RefreshCw size={12} /> Reload Halaman
+        </button>
       </div>
     );
   }
 
-  // 4. Auth Screen (Jika tidak ada user)
   if (!user) {
     return <Auth onLogin={handleLogin} />;
   }
 
-  // 5. Main App (Jika user login)
   const NavItem = ({ id, label, icon: Icon }: { id: string, label: string, icon: any }) => (
     <button
       onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }}

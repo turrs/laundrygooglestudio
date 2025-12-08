@@ -37,18 +37,16 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (authError) throw authError;
 
       if (data.user) {
-        // Wait a small moment if this was a fresh login right after signup to ensure trigger finished
-        // (Usually instant, but network latency happens)
-        
-        // Fetch Profile
-        const profile = await SupabaseService.getCurrentProfile();
+        // Optimization: Pass userId directly to avoid extra getSession call
+        const profile = await SupabaseService.getCurrentProfile(data.user.id);
 
         if (!profile) {
-             throw new Error("Login successful, but profile not found. If you just registered, please try logging in again in a few seconds.");
+             // If profile is null after login, it might be a new registration trigger delay or network timeout
+             throw new Error("Login berhasil, namun profil tidak ditemukan. Mohon coba lagi.");
         }
 
         if (profile.role !== role) {
-          setError(`Account found, but role does not match. Please switch tabs.`);
+          setError(`Akun ditemukan, namun role tidak sesuai. Silakan ganti tab role.`);
           await (supabase.auth as any).signOut();
           setLoading(false);
           return;
@@ -66,7 +64,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       console.error("Login Error:", err);
-      setError(err.message === 'Invalid login credentials' ? 'Invalid email or password.' : err.message);
+      // Ensure we clear session if login flow failed halfway
+      if (err.message.includes("profil tidak ditemukan")) {
+         await (supabase.auth as any).signOut();
+      }
+      setError(err.message === 'Invalid login credentials' ? 'Email atau password salah.' : err.message);
     } finally {
       setLoading(false);
     }
@@ -98,7 +100,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
       if (authError) {
         if (authError.message.includes("invalid")) {
-            throw new Error(`Email is invalid. Please check for extra spaces or typos.`);
+            throw new Error(`Email tidak valid. Periksa spasi atau typo.`);
         }
         throw authError;
       }
@@ -118,7 +120,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
              // Owner flow
              if (!data.session) {
                 // Email confirmation required case
-                setSuccessMsg("Registration successful! Please check your email to confirm your account.");
+                setSuccessMsg("Registrasi berhasil! Cek email untuk konfirmasi.");
              } else {
                 // Auto login successful, but we usually want to force a fresh login to be safe or redirect
                 setSuccessMsg("Registrasi berhasil! Silakan Login.");
@@ -127,7 +129,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Registration failed.');
+      setError(err.message || 'Registrasi gagal.');
       setLoading(false);
     }
   };
@@ -209,14 +211,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </button>
 
               <p className="text-center text-sm text-slate-600 mt-4">
-                 Don't have an account? <button type="button" onClick={() => { setView('REGISTER'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-medium hover:underline">Register here</button>
+                 Belum punya akun? <button type="button" onClick={() => { setView('REGISTER'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-medium hover:underline">Daftar disini</button>
               </p>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
               <h2 className="text-xl font-semibold text-slate-800 mb-4">{role === UserRole.OWNER ? 'Owner Registration' : 'Staff Registration'}</h2>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
                 <input 
                   type="text" 
                   required
@@ -257,11 +259,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               )}
 
               <button type="submit" disabled={loading} className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg transition shadow-md flex items-center justify-center">
-                {loading ? <Loader2 className="animate-spin" /> : (role === UserRole.OWNER ? 'Create Owner Account' : 'Register as Staff')}
+                {loading ? <Loader2 className="animate-spin" /> : (role === UserRole.OWNER ? 'Daftar sebagai Owner' : 'Daftar sebagai Staff')}
               </button>
               
               <p className="text-center text-sm text-slate-600 mt-4">
-                Already have an account? <button type="button" onClick={() => { setView('LOGIN'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-medium hover:underline">Login</button>
+                Sudah punya akun? <button type="button" onClick={() => { setView('LOGIN'); setError(''); setSuccessMsg(''); }} className="text-blue-600 font-medium hover:underline">Login</button>
               </p>
             </form>
           )}
