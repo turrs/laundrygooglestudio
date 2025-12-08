@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from './types';
 import { Auth } from './components/Auth';
@@ -44,68 +45,104 @@ const App: React.FC = () => {
       return;
     }
 
-    // Failsafe: Force stop loading after 5 seconds if auth hangs (common in multi-tab usage)
-    const timeoutId = setTimeout(() => {
-        if (isLoading) {
-            console.warn("Auth check timed out, forcing render.");
+    // Flag to prevent state updates on unmounted component
+    let mounted = true;
+
+    // --- SAFETY VALVE ---
+    const safetyTimer = setTimeout(() => {
+        if (mounted && isLoading) {
+            console.warn("Auth check timed out. Forcing UI to load.");
             setIsLoading(false);
         }
     }, 5000);
 
-    const initSession = async () => {
+    const checkSession = async () => {
       try {
-        // 1. Check Local Storage Session
-        const { data: { session } } = await (supabase.auth as any).getSession();
-
+        // STEP 1: Cek Penyimpanan Lokal (Instant)
+        // Jika tidak ada token di localStorage, jangan buang waktu ke server.
+        const { data: { session } } = await supabase.auth.getSession();
+        
         if (!session) {
-           setUser(null);
-           // IMPORTANT: explicitly stop loading here
-           if (!trackingId) setIsLoading(false);
-           return; 
+            if (mounted) {
+                setUser(null);
+                setIsLoading(false);
+            }
+            return; 
         }
 
-        // 2. If session exists, verify with server and get Profile
+        // STEP 2: Verifikasi Token ke Server (Secure)
+        // Token ada di lokal, tapi apakah masih valid? (Tidak expired/revoked)
+        const { data: { user: authUser }, error } = await supabase.auth.getUser();
+
+        if (error || !authUser) {
+           // Token lokal basi atau tidak valid
+           if (mounted) {
+             console.warn("Token exists but invalid/expired on server.");
+             await supabase.auth.signOut(); // Bersihkan token basi
+             setUser(null);
+             setIsLoading(false);
+           }
+           return;
+        }
+
+        // STEP 3: Ambil Data Profil Aplikasi
         const profile = await SupabaseService.getCurrentProfile();
-        if (profile) {
-          setUser(profile);
-          // Only change tab if we are NOT in tracking mode
-          if (!trackingId) {
-             setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
-          }
-        } else {
-          setUser(null);
+        
+        if (mounted) {
+            if (profile) {
+                setUser(profile);
+                if (!trackingId) {
+                    setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+                }
+            } else {
+                // User login valid, tapi data profile hilang di DB
+                console.error("User authenticated but no profile found. Forcing logout.");
+                await supabase.auth.signOut();
+                setUser(null);
+            }
         }
       } catch (error) {
-        console.error("Session initialization failed:", error);
-        setUser(null);
+        console.error("Auth initialization crashed:", error);
+        if (mounted) setUser(null);
       } finally {
-        // Only trigger re-render if we were actually loading (i.e. not in tracking mode)
-        if (!trackingId) {
-            setIsLoading(false);
-        }
+        if (mounted) setIsLoading(false);
       }
     };
 
-    initSession();
+    // Run the check
+    checkSession();
 
-    const { data: authListener } = (supabase.auth as any).onAuthStateChange(async (event: string, session: any) => {
-      if (event === 'SIGNED_IN' && session) {
-        // If user is already set, don't refetch profile unnecessarily to avoid race conditions
-        if (!user) {
-            const profile = await SupabaseService.getCurrentProfile();
-            if (profile) setUser(profile);
-        }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        if (!trackingId) setActiveTab('DASHBOARD');
+    // Listen for changes (Sign In, Sign Out, Auto-Refresh)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Only react to specific events after initial load is done
+      if (event === 'SIGNED_OUT') {
+         if (mounted) {
+            setUser(null);
+            if (!trackingId) setActiveTab('DASHBOARD'); // Reset tab context
+            setIsLoading(false); // Ensure loading stops on logout
+         }
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+         // Re-fetch profile on explicit sign-in or refresh
+         // Only fetch if we don't have the user yet (optimization)
+         if (!user) {
+             const profile = await SupabaseService.getCurrentProfile();
+             if (mounted && profile) {
+                 setUser(profile);
+                 if (!trackingId) {
+                     setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+                 }
+                 setIsLoading(false);
+             }
+         }
       }
     });
 
     return () => {
-      clearTimeout(timeoutId);
+      mounted = false;
+      clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
     };
-  }, [trackingId]); // Depend on trackingId to ensure stability
+  }, [trackingId]); // Remove 'user' from dep array to prevent loop
 
   if (!isSupabaseConfigured) {
     return (
@@ -133,15 +170,15 @@ const App: React.FC = () => {
   }
 
   // Priority Render: Tracking Page overrides Auth check logic
-  // Since we initialized isLoading=false for trackingId, this renders immediately.
   if (trackingId) {
     return <TrackingPage orderId={trackingId} />;
   }
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-50 text-blue-600">
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 text-blue-600 gap-4">
         <Loader2 className="animate-spin w-10 h-10" />
+        <p className="text-sm text-slate-400 animate-pulse">Memverifikasi sesi...</p>
       </div>
     );
   }
@@ -152,10 +189,15 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    setIsLoading(true); 
+    // Optimistic Logout UI
+    setUser(null);
+    setIsLoading(true);
     try {
-        await (supabase.auth as any).signOut();
-        setUser(null);
+        await supabase.auth.signOut();
+    } catch (e) {
+        console.error("Logout error", e);
+        // Force reload if logout hangs (clears memory state)
+        window.location.reload();
     } finally {
         setIsLoading(false);
     }

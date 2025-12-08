@@ -44,6 +44,7 @@ if (!isSupabaseConfigured) {
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     storage: window.localStorage, // Force use of LocalStorage
+    storageKey: 'launderlink-pro-token', // Consistent key for token storage
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
