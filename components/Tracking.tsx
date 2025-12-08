@@ -6,9 +6,10 @@ import { Package, CheckCircle, Clock, Star, ArrowLeft, RefreshCcw, WifiOff } fro
 
 interface TrackingPageProps {
   orderId: string;
+  onClearTracking?: () => void; // Callback prop
 }
 
-export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
+export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId, onClearTracking }) => {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState(0);
@@ -73,12 +74,17 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ orderId }) => {
     }
   };
 
-  // Helper to clear tracking ID and go to login
+  // Improved Navigation Handler
   const handleGoHome = () => {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('trackingId');
-      window.history.pushState({}, '', url);
-      window.location.reload();
+      if (onClearTracking) {
+          onClearTracking();
+      } else {
+          // Fallback if prop not provided (legacy)
+          const url = new URL(window.location.href);
+          url.searchParams.delete('trackingId');
+          window.history.pushState({}, '', url);
+          window.location.reload();
+      }
   };
 
   if (loading) {

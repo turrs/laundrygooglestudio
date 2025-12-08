@@ -19,169 +19,110 @@ import {
   Menu,
   X,
   Loader2,
-  AlertTriangle,
   Wallet
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './migration/supabaseClient';
 import { SupabaseSchema } from './migration/SupabaseSchema';
 
 const App: React.FC = () => {
+  // State User bersih, tidak ada inisialisasi kompleks dari localStorage manual
   const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState('DASHBOARD');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // FIX: Initialize trackingId immediately from URL
-  const [trackingId] = useState<string | null>(() => {
+  // Tracking ID logic
+  const [trackingId, setTrackingId] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('trackingId');
   });
-  
-  // Initial loading state
-  const [isLoading, setIsLoading] = useState(!trackingId);
 
+  const [activeTab, setActiveTab] = useState('ORDERS');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // DEFAULT LOADING TRUE
+  // Kita berasumsi aplikasi sedang memuat sampai Supabase bilang "ada session" atau "tidak ada".
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- CORE AUTH LOGIC ---
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      if (isLoading) setIsLoading(false);
+    // 1. Jika Tracking ID ada, kita tidak butuh auth user, matikan loading segera.
+    if (trackingId) {
+      setIsLoading(false);
       return;
     }
 
-    // Flag to prevent state updates on unmounted component
-    let mounted = true;
+    if (!isSupabaseConfigured) {
+      setIsLoading(false);
+      return;
+    }
 
-    // --- SAFETY VALVE ---
-    const safetyTimer = setTimeout(() => {
-        if (mounted && isLoading) {
-            console.warn("Auth check timed out. Forcing UI to load.");
-            setIsLoading(false);
-        }
-    }, 5000);
-
-    const checkSession = async () => {
+    const initSession = async () => {
       try {
-        // STEP 1: Cek Penyimpanan Lokal (Instant)
-        // Jika tidak ada token di localStorage, jangan buang waktu ke server.
+        // A. Cek apakah ada session tersimpan di LocalStorage (SDK Handle ini)
         const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-            if (mounted) {
-                setUser(null);
-                setIsLoading(false);
-            }
-            return; 
-        }
 
-        // STEP 2: Verifikasi Token ke Server (Secure)
-        // Token ada di lokal, tapi apakah masih valid? (Tidak expired/revoked)
-        const { data: { user: authUser }, error } = await supabase.auth.getUser();
-
-        if (error || !authUser) {
-           // Token lokal basi atau tidak valid
-           if (mounted) {
-             console.warn("Token exists but invalid/expired on server.");
-             await supabase.auth.signOut(); // Bersihkan token basi
-             setUser(null);
-             setIsLoading(false);
-           }
-           return;
-        }
-
-        // STEP 3: Ambil Data Profil Aplikasi
-        const profile = await SupabaseService.getCurrentProfile();
-        
-        if (mounted) {
-            if (profile) {
-                setUser(profile);
-                if (!trackingId) {
-                    setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
-                }
-            } else {
-                // User login valid, tapi data profile hilang di DB
-                console.error("User authenticated but no profile found. Forcing logout.");
-                await supabase.auth.signOut();
-                setUser(null);
-            }
+        if (session?.user) {
+          // B. Jika ada session, ambil data profil lengkap dari DB
+          // Token otomatis dipakai oleh SupabaseService
+          const profile = await SupabaseService.getCurrentProfile();
+          
+          if (profile) {
+            setUser(profile);
+            // Set default tab based on role
+            setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
+          } else {
+            // Edge Case: Ada session auth, tapi tidak ada row di tabel profiles
+            // Logout untuk pembersihan
+            await supabase.auth.signOut();
+            setUser(null);
+          }
+        } else {
+            // Tidak ada session (User belum login)
+            setUser(null);
         }
       } catch (error) {
-        console.error("Auth initialization crashed:", error);
-        if (mounted) setUser(null);
+        console.error("Auth initialization error:", error);
+        setUser(null);
       } finally {
-        if (mounted) setIsLoading(false);
+        // Apapun yang terjadi (Login/Tidak/Error), loading selesai.
+        setIsLoading(false);
       }
     };
 
-    // Run the check
-    checkSession();
+    initSession();
 
-    // Listen for changes (Sign In, Sign Out, Auto-Refresh)
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
-      // Only react to specific events after initial load is done
-      if (event === 'SIGNED_OUT') {
-         if (mounted) {
-            setUser(null);
-            if (!trackingId) setActiveTab('DASHBOARD'); // Reset tab context
-            setIsLoading(false); // Ensure loading stops on logout
+    // C. Listener untuk perubahan Auth (Login/Logout realtime)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+         // User baru saja login
+         const profile = await SupabaseService.getCurrentProfile();
+         if (profile) {
+             setUser(profile);
+             setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
          }
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-         // Re-fetch profile on explicit sign-in or refresh
-         // Only fetch if we don't have the user yet (optimization)
-         if (!user) {
-             const profile = await SupabaseService.getCurrentProfile();
-             if (mounted && profile) {
-                 setUser(profile);
-                 if (!trackingId) {
-                     setActiveTab(profile.role === UserRole.OWNER ? 'DASHBOARD' : 'ORDERS');
-                 }
-                 setIsLoading(false);
-             }
-         }
+      } else if (event === 'SIGNED_OUT') {
+         // User logout
+         setUser(null);
+         setActiveTab('ORDERS');
       }
     });
 
     return () => {
-      mounted = false;
-      clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
     };
-  }, [trackingId]); // Remove 'user' from dep array to prevent loop
+  }, [trackingId]); 
 
-  if (!isSupabaseConfigured) {
-    return (
-      <div className="min-h-screen bg-slate-100 p-4 overflow-auto">
-        <div className="max-w-4xl mx-auto pt-10">
-          <div className="bg-white p-8 rounded-xl shadow-lg text-center mb-8">
-             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle size={32} />
-             </div>
-             <h2 className="text-xl font-bold text-slate-800 mb-2">Supabase Configuration Missing</h2>
-             <p className="text-slate-500 text-sm mb-6">
-               To run this application, you must connect it to a Supabase project.
-             </p>
-             <div className="bg-slate-50 p-4 rounded-lg text-left text-xs font-mono text-slate-600 overflow-x-auto mb-4 border border-slate-200 inline-block max-w-full">
-                REACT_APP_SUPABASE_URL=...<br/>
-                REACT_APP_SUPABASE_ANON_KEY=...
-             </div>
-             <p className="text-xs text-slate-400">Please add these to your .env file.</p>
-          </div>
-          
-          <SupabaseSchema />
-        </div>
-      </div>
-    );
-  }
 
-  // Priority Render: Tracking Page overrides Auth check logic
-  if (trackingId) {
-    return <TrackingPage orderId={trackingId} />;
-  }
+  // --- HANDLERS ---
 
-  if (isLoading) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 text-blue-600 gap-4">
-        <Loader2 className="animate-spin w-10 h-10" />
-        <p className="text-sm text-slate-400 animate-pulse">Memverifikasi sesi...</p>
-      </div>
-    );
-  }
+  const handleClearTracking = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('trackingId');
+      window.history.pushState({}, '', url);
+      setTrackingId(null);
+      
+      // Saat keluar tracking, jika user null, kita set loading true sebentar
+      // untuk memastikan cek ulang session (walaupun useEffect akan handle)
+      if (!user) setIsLoading(true);
+  };
 
   const handleLogin = (u: User) => {
     setUser(u);
@@ -189,24 +130,50 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // Optimistic Logout UI
-    setUser(null);
-    setIsLoading(true);
     try {
         await supabase.auth.signOut();
+        // State update dihandle oleh onAuthStateChange ('SIGNED_OUT')
     } catch (e) {
         console.error("Logout error", e);
-        // Force reload if logout hangs (clears memory state)
-        window.location.reload();
-    } finally {
-        setIsLoading(false);
+        // Fallback manual jika listener gagal
+        setUser(null);
     }
   };
 
+  // --- RENDERERS ---
+
+  // 1. Schema Check
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 overflow-auto">
+        <div className="max-w-4xl mx-auto pt-10">
+             <SupabaseSchema />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Tracking Page (Priority High)
+  if (trackingId) {
+    return <TrackingPage orderId={trackingId} onClearTracking={handleClearTracking} />;
+  }
+
+  // 3. Loading Screen (Saat cek session)
+  if (isLoading) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 text-blue-600 gap-4">
+        <Loader2 className="animate-spin w-10 h-10" />
+        <p className="text-sm text-slate-400 font-medium">Memuat data...</p>
+      </div>
+    );
+  }
+
+  // 4. Auth Screen (Jika tidak ada user)
   if (!user) {
     return <Auth onLogin={handleLogin} />;
   }
 
+  // 5. Main App (Jika user login)
   const NavItem = ({ id, label, icon: Icon }: { id: string, label: string, icon: any }) => (
     <button
       onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }}

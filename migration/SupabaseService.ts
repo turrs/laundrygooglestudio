@@ -13,20 +13,26 @@ export const SupabaseService = {
   
   async getCurrentProfile(): Promise<User | null> {
     try {
-        const { data: { user } } = await (supabase.auth as any).getUser();
-        if (!user) return null;
+        // 1. Get the session directly. This is faster if we just checked session in App.tsx
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session?.user) {
+            return null; 
+        }
+        
+        const user = session.user;
 
-        // Try fetching by auth_id (new schema) OR id (legacy schema compatibility)
-        // We try to find a profile where auth_id matches OR id matches
+        // 2. Fetch Profile based on Auth ID
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
-          .or(`auth_id.eq.${user.id},id.eq.${user.id}`) // Flexible check
+          .or(`auth_id.eq.${user.id},id.eq.${user.id}`) // Handle both legacy and new schema
           .single();
 
         if (error) {
-            if (error.code !== 'PGRST116') { // PGRST116 is 'not found', which is handled by returning null
-                console.error("Error fetching profile from DB:", error.message);
+            // PGRST116 = Row not found. Normal for fresh registrations before trigger runs.
+            if (error.code !== 'PGRST116') {
+                console.error("DB Error fetching profile:", error.message);
             }
             return null;
         }
