@@ -123,20 +123,39 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({ currentU
     reader.onload = async (evt) => {
         const text = evt.target?.result as string;
         if (!text) return;
+        
         const lines = text.split('\n').filter(line => line.trim() !== '');
+        if (lines.length === 0) return;
+
+        // Auto-detect delimiter from header row (semicolon vs comma)
+        const header = lines[0];
+        const delimiter = header.includes(';') ? ';' : ',';
+
         const dataRows = lines.slice(1);
         let successCount = 0;
         let failCount = 0;
         setLoading(true);
+
         for (const row of dataRows) {
-            const cols = row.split(',').map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+            const cols = row.split(delimiter).map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+            
             if (cols.length < 2) { failCount++; continue; }
+            
             const [name, phone, email, address, notes] = cols;
-            if (!name || !phone) { failCount++; continue; }
+            
+            // Cleanup phone number
+            const cleanPhone = phone ? phone.replace(/[^0-9+]/g, '') : '';
+
+            if (!name || !cleanPhone) { failCount++; continue; }
+            
             try {
                 await SupabaseService.saveCustomer({
                     id: `cust-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    name, phone, email: email || '', address: address || '', notes: notes || ''
+                    name, 
+                    phone: cleanPhone, 
+                    email: email || '', 
+                    address: address || '', 
+                    notes: notes || ''
                 });
                 successCount++;
             } catch (err) { failCount++; }
